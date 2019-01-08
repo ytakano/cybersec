@@ -1,6 +1,9 @@
 \documentclass[fleqn]{jsarticle}
 
-\title{サイバーセキュリティ演習 I}
+\usepackage[dvipdfmx]{hyperref,graphicx}
+\usepackage{ascmac}
+
+\title{サイバーセキュリティPBL I}
 \author{高野 祐輝}
 
 \begin{document}
@@ -31,14 +34,8 @@
 
 \cite{RFC2196}
 
-\section{TCP/IPの基礎}
-
-\begin{itemize}
-    \item OSI参照モデル
-    \item L2ヘッダ
-    \item L3ヘッダ
-    \item L4ヘッダ
-\end{itemize}
+\section{TCP/IPの基礎} \label{sec:tcpip}
+\input{tcpip.tex}
 
 \section{PF (Packet Filter)の基礎}
 
