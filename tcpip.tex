@@ -24,6 +24,20 @@ Open Systems Interconnection (OSI)の策定を行っていた。
 
 OSI自体は残らなかったが、OSI策定の際に考案されたOSI参照モデルと呼ばれる
 ネットワークの抽象化手法は、今日でも広く受け入れられている。
+図~\ref{fig:osi}は、OSI参照モデルによるネットワークの抽象化モデルを表している。
+OSI参照モデルでは、ネットワークの機能を階層構造にもとづいて抽象化しており、
+この抽象化をレイヤリングなどと呼ぶ。
+OSI参照モデルでは、下から順に1層に物理層、2層にデータリンク層、
+3層にネットワーク層、4層にトランスポート層、5層にセッション層、
+6層にプレゼンテーション層、7層にアプリケーション層が位置する。
+ちなみに、各層のことをレイヤ1、レイヤ2といったり、更に略してL1、L2などということもある。
+
+\begin{figure}[tb]
+    \centering
+    \includegraphics[height=5cm,pagebox=artbox]{figs/osi_link.pdf}
+    \caption{各層でのデータ転送}
+    \label{fig:osi_link}
+\end{figure}
 
 \begin{itembox}[l]{\bf 重要ポイント}
     \begin{itemize}
