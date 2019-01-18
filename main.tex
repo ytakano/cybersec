@@ -1,7 +1,30 @@
 \documentclass[fleqn]{jsarticle}
 
+\usepackage{listings}
 \usepackage[dvipdfmx]{hyperref,graphicx}
 \usepackage{ascmac}
+\usepackage{color}
+
+\lstset{%
+  language={C},
+  basicstyle={\small\ttfamily},%
+  identifierstyle={\small\ttfamily},%
+  commentstyle={\color{magenta}\small\ttfamily\itshape},%
+  keywordstyle={\color{blue}\small\bfseries\ttfamily},%
+  ndkeywordstyle={\small},%
+  stringstyle={\color{red}\small\ttfamily},
+  frame={tb},
+  breaklines=true,
+  columns=[l]{fullflexible},%
+  numbers=left,%
+  xrightmargin=0zw,%
+  xleftmargin=3zw,%
+  numberstyle={\scriptsize},%
+  stepnumber=1,
+  numbersep=1zw,%
+  lineskip=-0.5ex,%
+  keepspaces=true%
+}
 
 \title{サイバーセキュリティPBL I}
 \author{高野 祐輝}
