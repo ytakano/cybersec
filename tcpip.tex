@@ -115,7 +115,7 @@ struct  ether_header {
         u_int8_t  ether_shost[ETHER_ADDR_LEN];
         u_int16_t ether_type;
 };
- \end{lstlisting}
+\end{lstlisting}
 
 
 \begin{lstlisting}[caption=Ethernet入力 (/usr/include/netinet/if\_ether.h),label=src:if_ether]
@@ -130,7 +130,7 @@ void ether_input(struct ether_header *eh)
     case ETHERTYPE_IP:
         ipv4_input(&eh[1]);
         break;
-    case ETHERTYPE_IP
+    case ETHERTYPE_IP6:
         ipv6_input(&eh[1]);
         break;
     default:
