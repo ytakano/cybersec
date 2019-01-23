@@ -3,6 +3,6 @@
 
 #include <netinet/ip.h>
 
-extern void ipv4_input(struct ip *iph);
+void ipv4_input(struct ip *iph);
 
 #endif // CYBER_IP_H
