@@ -6,5 +6,6 @@
 #include <netinet/if_ether.h>
 
 void ether_input(struct my_ifnet *ifp, struct ether_header *eh);
+void ether_output(struct my_ifnet *ifp, struct ether_header *eh);
 
 #endif // CYBER_ETHER_H

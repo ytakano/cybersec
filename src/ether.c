@@ -20,8 +20,6 @@ struct mac2if {
 
 struct mac2if mactable[256]; // MACアドレステーブルのインスタンス
 
-static void ether_output(struct my_ifnet *ifp, struct ether_header *eh);
-
 /*
  * MACアドレステーブルにMACアドレスを追加する関数
  * 引数:
@@ -50,7 +48,7 @@ static void add2mactable(struct my_ifnet *ifp, struct ether_header *eh) {
  *   eh: 入力Ethernetフレーム
  */
 static struct my_ifnet *find_interface(struct ether_header *eh) {
-    // 送信先MACアドレスからハッシュ値を計算
+    // 宛先MACアドレスからハッシュ値を計算
     uint8_t hash = MACHASH(eh->ether_dhost);
 
     // 送信元MACアドレスとMACアドレステーブルのMACアドレスとを比較
@@ -101,7 +99,7 @@ void ether_input(struct my_ifnet *ifp, struct ether_header *eh) {
         return;
     }
 
-    switch (eh->ether_type) {
+    switch (ntohs(eh->ether_type)) {
     case ETHERTYPE_IP: // IPv4入力
         ipv4_input((struct ip *)&eh[1]);
         break;
@@ -116,7 +114,7 @@ void ether_input(struct my_ifnet *ifp, struct ether_header *eh) {
     return;
 }
 
-static void ether_output(struct my_ifnet *ifp, struct ether_header *eh) {
+void ether_output(struct my_ifnet *ifp, struct ether_header *eh) {
     printf("ether_output:\n");
     printf("    IF#: %d\n", (int)(ifp - interfaces));
     printf("    SRC MAC: %02X-%02X-%02X-%02X-%02X-%02X\n", eh->ether_shost[0],

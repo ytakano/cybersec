@@ -10,8 +10,8 @@ set(CMAKE_C_FLAGS_DEBUG "-g -O0")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
 
 # build targets
-FILE(GLOB CSources *.c)
-FILE(GLOB CHeaders *.h)
+FILE(GLOB CSources *.c poptrie/*.c)
+FILE(GLOB CHeaders *.h poptrie/*.h)
 FILE(GLOB CMain main.c)
 
 #list(REMOVE_ITEM CSources ${CMain})
