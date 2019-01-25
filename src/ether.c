@@ -101,10 +101,13 @@ void ether_input(struct my_ifnet *ifp, struct ether_header *eh) {
 
     switch (ntohs(eh->ether_type)) {
     case ETHERTYPE_IP: // IPv4入力
-        ipv4_input((struct ip *)&eh[1]);
+        ipv4_input((struct ip *)((uint8_t *)eh + ETHER_HDR_LEN));
         break;
     case ETHERTYPE_IPV6: // IPv6入力
-        ipv6_input((struct ip6_hdr *)&eh[1]);
+        ipv6_input((struct ip6_hdr *)((uint8_t *)eh + ETHER_HDR_LEN));
+        break;
+    case ETHERTYPE_ARP: // ARP入力
+        arp_input(ifp, (struct arphdr *)((uint8_t *)eh + ETHER_HDR_LEN));
         break;
     default:
         printf("eh->ether_type is neither IPv6 nor IPv6\n");
