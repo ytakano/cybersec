@@ -73,7 +73,7 @@ static void bridge_input(struct my_ifnet *ifp, struct ether_header *eh) {
         ether_output(outif, eh);
     } else {
         // MACアドレステーブルにない場合、受信インターフェース以外の全てのインターフェースへ送信
-        for (int i = 0; i < NUMIF; i++) {
+        for (int i = 0; i < numif; i++) {
             if (ifp != &interfaces[i])
                 ether_output(&interfaces[i], eh);
         }

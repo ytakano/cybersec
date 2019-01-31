@@ -2,6 +2,8 @@
 #include "flags.h"
 
 #include "ether.h"
+#include "tcp.h"
+
 #include "poptrie/poptrie.h"
 
 #include <stdbool.h>
@@ -49,6 +51,7 @@ struct ip2mac arptable[256]; // MACアドレステーブルのインスタンス
 
 struct sendbuf {
     struct ether_header *eh;
+    uint32_t ethlen;
     LIST_ENTRY(sendbuf) pointers;
 };
 
@@ -87,7 +90,7 @@ static void add2arptable(struct in_addr *addr, uint8_t *macaddr) {
 }
 
 static bool is_to_me(struct ip *iph) {
-    for (int i = 0; i < NUMIF; i++) {
+    for (int i = 0; i < numif; i++) {
         if (memcmp(&interfaces[i].addr, &iph->ip_dst, sizeof(iph->ip_dst)) == 0)
             return true;
     }
@@ -109,11 +112,21 @@ void ipv4_input(struct ip *iph) {
         return;
     }
 
+    uint8_t *nxt = (uint8_t *)iph;
+    nxt += iph->ip_hl * 4;
+
     switch (iph->ip_p) {
     case IPPROTO_TCP:
+        tcp_input((struct tcphdr *)nxt);
+        break;
     case IPPROTO_UDP:
     default:;
     }
+}
+
+void ipv4_output(struct ip *iph) {
+    iph->ip_ttl = 32;
+    forward(iph);
 }
 
 void route_add(struct my_ifnet *ifp, struct in_addr *addr, int plen) {
@@ -130,6 +143,8 @@ void init_ipv4() {
         fprintf(stderr, "failed to initialize poptrie\n");
         exit(1);
     }
+
+    LIST_INIT(&sbuf);
 }
 
 /*
@@ -176,6 +191,9 @@ static void arp_req_input(struct my_ifnet *ifp, struct arphdr *arph) {
     struct ether_header *eh = (struct ether_header *)buf;
     struct ether_arp *reply = (struct ether_arp *)(buf + ETHER_HDR_LEN);
 
+    // ARPテーブルに追加
+    add2arptable((struct in_addr *)req->arp_spa, req->arp_sha);
+
     // Ethenerヘッダ設定
     memcpy(eh->ether_shost, ifp->ifaddr, ETHER_ADDR_LEN); // 送信元MACは自分
     memcpy(eh->ether_dhost, req->arp_sha, ETHER_ADDR_LEN); // 宛先MAC
@@ -199,6 +217,39 @@ static void arp_req_input(struct my_ifnet *ifp, struct arphdr *arph) {
     ether_output(ifp, eh);
 }
 
+static void arp_reply_input(struct my_ifnet *ifp, struct arphdr *arph) {
+    struct ether_arp *rep = (struct ether_arp *)arph;
+
+    // ARPテーブルに追加
+    add2arptable((struct in_addr *)rep->arp_spa, rep->arp_sha);
+
+    // 送信バッファ中のフレームを送信
+    struct sendbuf *np;
+    for (np = sbuf.lh_first; np != NULL;) {
+        if (np->eh->ether_type == htons(ETHERTYPE_IP)) {
+            struct ip *iph = (struct ip *)(((uint8_t *)np->eh) + ETHER_HDR_LEN);
+            struct ip2mac *mac = find_mac(&iph->ip_dst);
+            if (mac == NULL) {
+                np = np->pointers.le_next;
+                continue;
+            }
+
+            // 宛先MACアドレスを設定
+            memcpy(np->eh->ether_dhost, mac->macaddr, ETHER_ADDR_LEN);
+
+            // インターフェースへ出力
+            ether_output(ifp, np->eh);
+
+            // バッファを解放
+            free(np->eh);
+            struct sendbuf *tmp = np->pointers.le_next;
+            LIST_REMOVE(np, pointers);
+            free(np);
+            np = tmp;
+        }
+    }
+}
+
 /*
  *
  */
@@ -214,11 +265,12 @@ void arp_input(struct my_ifnet *ifp, struct arphdr *arph) {
 
     switch (ntohs(arph->ar_op)) {
     case ARPOP_REQUEST:
+        // ARPリクエストを受け取り応答
         arp_req_input(ifp, arph);
         return;
     case ARPOP_REPLY:
-        // TODO
-        // REPLYを受け取って、ARPテーブルに追加して送信バッファを送信
+        // REPLYを受け取って送信バッファ中のフレームを送信
+        arp_reply_input(ifp, arph);
         return;
     default:
         // ARP要求と応答以外は未対応
