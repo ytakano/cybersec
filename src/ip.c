@@ -90,8 +90,9 @@ static void add2arptable(struct in_addr *addr, uint8_t *macaddr) {
 }
 
 static bool is_to_me(struct ip *iph) {
-    for (int i = 0; i < numif; i++) {
-        if (memcmp(&interfaces[i].addr, &iph->ip_dst, sizeof(iph->ip_dst)) == 0)
+    for (struct my_ifnet *np = LIST_FIRST(&ifs); np != NULL;
+         np = LIST_NEXT(np, pointers)) {
+        if (memcmp(&np->addr, &iph->ip_dst, sizeof(iph->ip_dst)) == 0)
             return true;
     }
 
