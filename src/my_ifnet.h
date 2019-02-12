@@ -25,9 +25,11 @@ LIST_HEAD(my_ifnet_head, my_ifnet);
 extern struct my_ifnet_head ifs;
 extern int numif;
 extern void init_my_ifnet();
-extern void add_if(const char *ipv4, uint8_t plen4, const char *ipv6,
-                   uint8_t plen6, const char *in, const char *out);
+extern struct my_ifnet *add_if(const char *ipv4, uint8_t plen4,
+                               const char *ipv6, uint8_t plen6, const char *in,
+                               const char *out);
 extern void dev_input(int fd);
+extern struct my_ifnet *find_if(int idx);
 extern void print_if();
 
 #endif // CYBER_MY_IFNET_H

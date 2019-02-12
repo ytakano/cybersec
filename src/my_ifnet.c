@@ -22,8 +22,18 @@ void init_my_ifnet() {
     LIST_INIT(&ifs);
 }
 
-void add_if(const char *ipv4, uint8_t plen4, const char *ipv6, uint8_t plen6,
-            const char *in, const char *out) {
+struct my_ifnet *find_if(int idx) {
+    for (struct my_ifnet *np = LIST_FIRST(&ifs); np != NULL;
+         np = LIST_NEXT(np, pointers)) {
+        if (np->idx == idx)
+            return np;
+    }
+
+    return NULL;
+}
+
+struct my_ifnet *add_if(const char *ipv4, uint8_t plen4, const char *ipv6,
+                        uint8_t plen6, const char *in, const char *out) {
     struct my_ifnet *ptr = malloc(sizeof(struct my_ifnet));
 
     ptr->idx = numif;
@@ -34,7 +44,7 @@ void add_if(const char *ipv4, uint8_t plen4, const char *ipv6, uint8_t plen6,
         if (!inet_pton(PF_INET, ipv4, &ptr->addr)) {
             perror("inet_pton");
             free(ptr);
-            return;
+            return NULL;
         }
     }
 
@@ -42,7 +52,7 @@ void add_if(const char *ipv4, uint8_t plen4, const char *ipv6, uint8_t plen6,
         if (!inet_pton(PF_INET6, ipv6, &ptr->addr6)) {
             perror("inet_pton");
             free(ptr);
-            return;
+            return NULL;
         }
     }
 
@@ -90,6 +100,8 @@ void add_if(const char *ipv4, uint8_t plen4, const char *ipv6, uint8_t plen6,
     LIST_INSERT_HEAD(&ifs, ptr, pointers);
 
     numif++;
+
+    return ptr;
 }
 
 void dev_input(int fd) {
