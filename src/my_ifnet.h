@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 #include <stdint.h>
 #include <sys/queue.h>
+#include <sys/un.h>
 
 // インターフェース情報を保持する構造体
 struct my_ifnet {
@@ -16,7 +17,7 @@ struct my_ifnet {
     char infile[128];              // 入力UNIXファイル名
     char outfile[128];             // 出力UNIXファイル名
     int infd;                      // 入力先UNIXドメインソケット
-    int outfd;                     // 出力先UNIXドメインソケット
+    struct sockaddr_un outun;      // 出力UNIXアドレス
     LIST_ENTRY(my_ifnet) pointers; // リスト
 };
 

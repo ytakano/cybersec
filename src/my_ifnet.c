@@ -1,5 +1,6 @@
 #include "my_ifnet.h"
 #include "ether.h"
+#include "ip.h"
 
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -64,20 +65,14 @@ struct my_ifnet *add_if(const char *ipv4, uint8_t plen4, const char *ipv6,
     memset(&sa, 0, sizeof(sa));
     sa.sun_family = PF_LOCAL;
     sa.sun_len = sizeof(sa);
-    strcpy(sa.sun_path, in);
+    strncpy(sa.sun_path, in, sizeof(sa.sun_path));
 
     bind(ptr->infd, (struct sockaddr *)&sa, sizeof(sa));
 
-    // 出力用ソケット作成
-    ptr->outfd = socket(PF_LOCAL, SOCK_DGRAM, 0);
-    unlink(out);
-
-    memset(&sa, 0, sizeof(sa));
-    sa.sun_family = PF_LOCAL;
-    sa.sun_len = sizeof(sa);
-    strcpy(sa.sun_path, out);
-
-    bind(ptr->outfd, (struct sockaddr *)&sa, sizeof(sa));
+    memset(&ptr->outun, 0, sizeof(sa));
+    ptr->outun.sun_family = PF_LOCAL;
+    ptr->outun.sun_len = sizeof(sa);
+    strncpy(ptr->outun.sun_path, out, sizeof(ptr->outun.sun_path));
 
     // ランダムなMACアドレスを生成
     ptr->ifaddr[0] = 0x02;
@@ -101,6 +96,13 @@ struct my_ifnet *add_if(const char *ipv4, uint8_t plen4, const char *ipv6,
 
     numif++;
 
+    struct in_addr nextip;
+    nextip.s_addr = 0;
+    uint32_t mask = ~((1 << (32 - plen4)) - 1);
+    uint32_t dst = ntohl(ptr->addr.s_addr) & mask;
+    dst = htonl(dst);
+    route_add(ptr, &nextip, (struct in_addr *)&dst, plen4);
+
     return ptr;
 }
 
@@ -120,7 +122,7 @@ void dev_input(int fd) {
                 break;
             }
 
-            ether_input(np, (struct ether_header *)buf);
+            ether_input(np, (struct ether_header *)buf, size);
             break;
         }
     }

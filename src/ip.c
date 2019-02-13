@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <arpa/inet.h>
 #include <netinet/if_ether.h>
 
 #include <sys/queue.h>
@@ -50,6 +51,7 @@ struct ip2mac {
 struct ip2mac arptable[256]; // MACアドレステーブルのインスタンス
 
 struct sendbuf {
+    struct in_addr nextip;
     struct ether_header *eh;
     uint32_t ethlen;
     LIST_ENTRY(sendbuf) pointers;
@@ -58,6 +60,16 @@ struct sendbuf {
 LIST_HEAD(sendbuf_head, sendbuf) sbuf; // 送信バッファ
 
 static struct poptrie *poptrie; // ルーティングテーブル
+
+struct fibentry {
+    struct my_ifnet *ifp;
+    struct in_addr nextip;
+    struct in_addr dstip;
+    int plen;
+    LIST_ENTRY(fibentry) pointers;
+};
+
+LIST_HEAD(fib_head, fibentry) fib; // FIB
 
 static void forward(struct ip *iph);
 
@@ -130,12 +142,40 @@ void ipv4_output(struct ip *iph) {
     forward(iph);
 }
 
-void route_add(struct my_ifnet *ifp, struct in_addr *addr, int plen) {
-    poptrie_route_add(poptrie, ntohl(addr->s_addr), plen, ifp);
+void route_add(struct my_ifnet *ifp, struct in_addr *next, struct in_addr *addr,
+               int plen) {
+    struct rtentry *entry = malloc(sizeof(struct rtentry));
+    entry->addr = *next;
+    entry->ifp = ifp;
+
+    poptrie_route_add(poptrie, ntohl(addr->s_addr), plen, entry);
+
+    struct fibentry *fibe = malloc(sizeof(struct fibentry));
+    fibe->ifp = ifp;
+    fibe->nextip = *next;
+    fibe->dstip = *addr;
+    fibe->plen = plen;
+
+    LIST_INSERT_HEAD(&fib, fibe, pointers);
 }
 
-static struct my_ifnet *route_lookup(struct in_addr *addr) {
-    return (struct my_ifnet *)poptrie_lookup(poptrie, ntohl(addr->s_addr));
+static struct rtentry *route_lookup(struct in_addr *addr) {
+    return (struct rtentry *)poptrie_lookup(poptrie, ntohl(addr->s_addr));
+}
+
+void print_route() {
+    char addr[16];
+    struct fibentry *fb;
+    for (fb = LIST_FIRST(&fib); fb != NULL; fb = LIST_NEXT(fb, pointers)) {
+        inet_ntop(PF_INET, &fb->dstip, addr, sizeof(addr));
+        printf("%s/%d ", addr, fb->plen);
+        if (fb->nextip.s_addr == 0) {
+            printf("#%d\n", fb->ifp->idx);
+        } else {
+            inet_ntop(PF_INET, &fb->nextip, addr, sizeof(addr));
+            printf("%s\n", addr);
+        }
+    }
 }
 
 void init_ipv4() {
@@ -146,6 +186,7 @@ void init_ipv4() {
     }
 
     LIST_INIT(&sbuf);
+    LIST_INIT(&fib);
 }
 
 /*
@@ -177,7 +218,7 @@ static void arp_req(struct my_ifnet *ifp, struct in_addr *addr) {
     memset(req->arp_tha, 0xff, ETHER_ADDR_LEN); // 宛先MACはブロードキャスト
     memcpy(req->arp_tpa, addr, sizeof(*addr)); // 質問先IP
 
-    ether_output(ifp, eh);
+    ether_output(ifp, eh, ETHER_HDR_LEN + sizeof(struct ether_arp));
 }
 
 /*
@@ -191,6 +232,10 @@ static void arp_req_input(struct my_ifnet *ifp, struct arphdr *arph) {
     uint8_t buf[ETHER_HDR_LEN + sizeof(struct ether_arp)];
     struct ether_header *eh = (struct ether_header *)buf;
     struct ether_arp *reply = (struct ether_arp *)(buf + ETHER_HDR_LEN);
+
+    char addr[16];
+    inet_ntop(PF_INET, req->arp_tpa, addr, sizeof(addr));
+    printf("who has %s ?\n", addr);
 
     // ARPテーブルに追加
     add2arptable((struct in_addr *)req->arp_spa, req->arp_sha);
@@ -215,7 +260,7 @@ static void arp_req_input(struct my_ifnet *ifp, struct arphdr *arph) {
     memcpy(reply->arp_tha, req->arp_sha, ETHER_ADDR_LEN);         // 宛先MAC
     memcpy(reply->arp_tpa, req->arp_spa, sizeof(reply->arp_tpa)); // 質問先IP
 
-    ether_output(ifp, eh);
+    ether_output(ifp, eh, ETHER_HDR_LEN + sizeof(struct ether_arp));
 }
 
 static void arp_reply_input(struct my_ifnet *ifp, struct arphdr *arph) {
@@ -228,8 +273,7 @@ static void arp_reply_input(struct my_ifnet *ifp, struct arphdr *arph) {
     struct sendbuf *np;
     for (np = sbuf.lh_first; np != NULL;) {
         if (np->eh->ether_type == htons(ETHERTYPE_IP)) {
-            struct ip *iph = (struct ip *)(((uint8_t *)np->eh) + ETHER_HDR_LEN);
-            struct ip2mac *mac = find_mac(&iph->ip_dst);
+            struct ip2mac *mac = find_mac(&np->nextip);
             if (mac == NULL) {
                 np = np->pointers.le_next;
                 continue;
@@ -239,7 +283,7 @@ static void arp_reply_input(struct my_ifnet *ifp, struct arphdr *arph) {
             memcpy(np->eh->ether_dhost, mac->macaddr, ETHER_ADDR_LEN);
 
             // インターフェースへ出力
-            ether_output(ifp, np->eh);
+            ether_output(ifp, np->eh, np->ethlen);
 
             // バッファを解放
             free(np->eh);
@@ -252,7 +296,10 @@ static void arp_reply_input(struct my_ifnet *ifp, struct arphdr *arph) {
 }
 
 /*
- *
+ * ARPリクエスト及び応答を受け取る関数
+ * 引数:
+ *   ifp: 入力インターフェース
+ *   arph: 入力ARP
  */
 void arp_input(struct my_ifnet *ifp, struct arphdr *arph) {
     // Ethernet以外は未対応
@@ -284,8 +331,10 @@ void arp_input(struct my_ifnet *ifp, struct arphdr *arph) {
  * 引数:
  *   eh: 送信するEthernetフレームへのポインタ
  *   ethlen: フレームサイズ
+ *   nextip: 次ホップIPアドレス
  */
-static void add2sendbuf(struct ether_header *eh, uint32_t ethlen) {
+static void add2sendbuf(struct ether_header *eh, uint32_t ethlen,
+                        struct in_addr *nextip) {
     // 送信バッファへコピー
     struct ether_header *buf = malloc(ethlen);
     memcpy(buf, eh, ethlen);
@@ -293,6 +342,8 @@ static void add2sendbuf(struct ether_header *eh, uint32_t ethlen) {
     // リンクリストのエントリを作成
     struct sendbuf *entry = malloc(sizeof(struct sendbuf));
     entry->eh = buf;
+    entry->ethlen = ethlen;
+    entry->nextip = *nextip;
 
     LIST_INSERT_HEAD(&sbuf, entry, pointers); // リンクリストへ追加
 }
@@ -304,8 +355,8 @@ static void add2sendbuf(struct ether_header *eh, uint32_t ethlen) {
  */
 static void forward(struct ip *iph) {
     // ルーティングテーブルから宛先インターフェースを決定
-    struct my_ifnet *ifp = (struct my_ifnet *)route_lookup(&iph->ip_dst);
-    if (ifp == NULL) // 宛先がルーティングテーブルに存在しない
+    struct rtentry *entry = route_lookup(&iph->ip_dst);
+    if (entry == NULL) // 宛先がルーティングテーブルに存在しない
         return;
 
     uint32_t len = ntohs(iph->ip_len);     // IPパケット長
@@ -321,23 +372,28 @@ static void forward(struct ip *iph) {
     struct ether_header *eh = (struct ether_header *)buf;
 
     // Ethernetヘッダおよび、IPヘッダへアドレスを設定
-    memcpy(eh->ether_shost, ifp->ifaddr, ETHER_ADDR_LEN); // 宛先MACアドレス
-    memcpy(buf + ETHER_HDR_LEN, iph, len);                // IPヘッダ
-    eh->ether_type = htons(ETHERTYPE_IP); // EthernetタイプをIPに設定
+    memcpy(eh->ether_shost, entry->ifp->ifaddr,
+           ETHER_ADDR_LEN);                // 宛先MACアドレス
+    memcpy(buf + ETHER_HDR_LEN, iph, len); // IPヘッダ
+    eh->ether_type = htons(ETHERTYPE_IP);  // EthernetタイプをIPに設定
+
+    // 次ホップIPアドレスを決定
+    struct in_addr nextip =
+        (entry->addr.s_addr == 0) ? iph->ip_dst : entry->addr;
 
     // 宛先IPアドレスの宛先MACアドレスをARPテーブルから検索
-    struct ip2mac *mac = find_mac(&iph->ip_dst);
+    struct ip2mac *mac = find_mac(&nextip);
     if (mac == NULL) {
         // ARPテーブルにないため、宛先IPアドレスに対応するMACアドレスを問い合わせ
-        arp_req(ifp, &iph->ip_dst);
+        arp_req(entry->ifp, &nextip);
 
         // 送信バッファにコピー
-        add2sendbuf(eh, ethlen);
+        add2sendbuf(eh, ethlen, &nextip);
     } else {
         // 宛先MACアドレスを設定
         memcpy(eh->ether_dhost, mac->macaddr, ETHER_ADDR_LEN);
 
         // インターフェースへ出力
-        ether_output(ifp, eh);
+        ether_output(entry->ifp, eh, ethlen);
     }
 }

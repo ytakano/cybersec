@@ -3,6 +3,8 @@
 #include "ip.h"
 #include "ipv6.h"
 
+#include <sys/un.h>
+
 #include <stdio.h>
 #include <string.h>
 
@@ -64,19 +66,20 @@ static struct my_ifnet *find_interface(struct ether_header *eh) {
  *   ifp: 入力インターフェース
  *   eh: 入力Ethernetフレーム
  */
-static void bridge_input(struct my_ifnet *ifp, struct ether_header *eh) {
+static void bridge_input(struct my_ifnet *ifp, struct ether_header *eh,
+                         int len) {
     // MACアドレステーブルを検索
     struct my_ifnet *outif = find_interface(eh);
 
     if (outif) {
         // MACアドレステーブルにキャッシュされていた場合、そのインターフェースへ送信
-        ether_output(outif, eh);
+        ether_output(outif, eh, len);
     } else {
         // MACアドレステーブルにない場合、受信インターフェース以外の全てのインターフェースへ送信
         for (struct my_ifnet *np = LIST_FIRST(&ifs); np != NULL;
              np = LIST_NEXT(np, pointers)) {
             if (ifp != np)
-                ether_output(np, eh);
+                ether_output(np, eh, len);
         }
     }
 
@@ -90,13 +93,23 @@ static void bridge_input(struct my_ifnet *ifp, struct ether_header *eh) {
  *   ifp: 入力インターフェース
  *   eh: 入力フレーム
  */
-void ether_input(struct my_ifnet *ifp, struct ether_header *eh) {
+void ether_input(struct my_ifnet *ifp, struct ether_header *eh, int len) {
+    printf("ether_input:\n");
+    printf("    IF#: %d\n", ifp->idx);
+    printf("    SRC MAC: %02X-%02X-%02X-%02X-%02X-%02X\n", eh->ether_shost[0],
+           eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
+           eh->ether_shost[4], eh->ether_shost[5]);
+    printf("    DST MAC: %02X-%02X-%02X-%02X-%02X-%02X\n", eh->ether_dhost[0],
+           eh->ether_dhost[1], eh->ether_dhost[2], eh->ether_dhost[3],
+           eh->ether_dhost[4], eh->ether_dhost[5]);
+    printf("\n");
+
     // 宛先MACアドレスが自インターフェース宛かチェック
     if (memcmp(ifp->ifaddr, eh->ether_dhost, ETHER_ADDR_LEN) != 0 &&
         !IS_BROADCAST(eh->ether_dhost)) {
         // 自インターフェース宛でない場合、L2ブリッジのフラグが立っていればL2ブリッジ処理へ
         if (IS_L2BRIDGE)
-            bridge_input(ifp, eh);
+            bridge_input(ifp, eh, len);
 
         return;
     }
@@ -119,7 +132,7 @@ void ether_input(struct my_ifnet *ifp, struct ether_header *eh) {
     return;
 }
 
-void ether_output(struct my_ifnet *ifp, struct ether_header *eh) {
+void ether_output(struct my_ifnet *ifp, struct ether_header *eh, int len) {
     printf("ether_output:\n");
     printf("    IF#: %d\n", ifp->idx);
     printf("    SRC MAC: %02X-%02X-%02X-%02X-%02X-%02X\n", eh->ether_shost[0],
@@ -128,6 +141,11 @@ void ether_output(struct my_ifnet *ifp, struct ether_header *eh) {
     printf("    DST MAC: %02X-%02X-%02X-%02X-%02X-%02X\n", eh->ether_dhost[0],
            eh->ether_dhost[1], eh->ether_dhost[2], eh->ether_dhost[3],
            eh->ether_dhost[4], eh->ether_dhost[5]);
-
     printf("\n");
+
+    ssize_t size = sendto(ifp->infd, eh, len, 0, (struct sockaddr *)&ifp->outun,
+                          sizeof(ifp->outun));
+    printf("size = %zd\n", size);
+    if (size < 0)
+        perror("send");
 }

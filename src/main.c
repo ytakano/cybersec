@@ -114,7 +114,7 @@ void eventloop() {
     add2event(kq, STDIN_FILENO);
 
     for (;;) {
-        printf("> ");
+        printf("show | create | tcp | exit\n> ");
         fflush(stdout);
 
         struct kevent kev;
@@ -128,20 +128,25 @@ void eventloop() {
             if (memcmp("create", buf, 6) == 0) {
                 struct my_ifnet *ifn = create_if();
                 if (ifn == NULL) {
-                    printf("failed to create an interface");
+                    printf("failed to create an interface\n");
                 } else {
                     add2event(kq, ifn->infd);
-                    printf("interface #%d is successfully created\n", ifn->idx);
+                    printf("interface #%d is successfully created\n\n",
+                           ifn->idx);
                 }
             } else if (memcmp("show", buf, 4) == 0) {
+                printf("interfaces:\n");
                 print_if();
+                printf("\nroute:\n");
+                print_route();
+                printf("\n");
             } else if (memcmp("tcp", buf, 4) == 0) {
                 send_tcp();
             } else if (memcmp("exit", buf, 4) == 0) {
                 exit(0);
             } else {
                 if (strlen(buf) != 0)
-                    printf("%s is not supported\n", buf);
+                    printf("%s is not supported\n\n", buf);
             }
         } else {
             dev_input(kev.ident);
