@@ -18,5 +18,6 @@ void arp_input(struct my_ifnet *ifp, struct arphdr *arph);
 void route_add(struct my_ifnet *ifp, struct in_addr *next, struct in_addr *addr,
                int plen);
 void print_route();
+void print_arp();
 
 #endif // CYBER_IP_H

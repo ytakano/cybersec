@@ -235,10 +235,14 @@ static void arp_req_input(struct my_ifnet *ifp, struct arphdr *arph) {
 
     char addr[16];
     inet_ntop(PF_INET, req->arp_tpa, addr, sizeof(addr));
-    printf("who has %s ?\n", addr);
+    printf("ARP: who has %s?\n", addr);
 
     // ARPテーブルに追加
     add2arptable((struct in_addr *)req->arp_spa, req->arp_sha);
+
+    struct in_addr *tpa = (struct in_addr *)req->arp_tpa;
+    if (tpa->s_addr != ifp->addr.s_addr)
+        return;
 
     // Ethenerヘッダ設定
     memcpy(eh->ether_shost, ifp->ifaddr, ETHER_ADDR_LEN); // 送信元MACは自分
@@ -251,7 +255,7 @@ static void arp_req_input(struct my_ifnet *ifp, struct arphdr *arph) {
     reply->ea_hdr.ar_hln = ETHER_ADDR_LEN; // 6バイト。MACアドレスサイズ
     reply->ea_hdr.ar_pln =
         sizeof(struct in_addr); // 4バイト。IPv4アドレスサイズ
-    reply->ea_hdr.ar_op = ntohs(ARPOP_REQUEST); // ARPリクエスト
+    reply->ea_hdr.ar_op = ntohs(ARPOP_REPLY); // ARPリプライ
 
     // ARPリプライ設定
     memcpy(reply->arp_sha, ifp->ifaddr, ETHER_ADDR_LEN); // 送信元MACは自分
@@ -265,6 +269,12 @@ static void arp_req_input(struct my_ifnet *ifp, struct arphdr *arph) {
 
 static void arp_reply_input(struct my_ifnet *ifp, struct arphdr *arph) {
     struct ether_arp *rep = (struct ether_arp *)arph;
+
+    char addr[16];
+    inet_ntop(PF_INET, rep->arp_spa, addr, sizeof(addr));
+    printf("ARP: %s has %02X-%02X-%02X-%02X-%02X-%02X\n", addr, rep->arp_sha[0],
+           rep->arp_sha[1], rep->arp_sha[2], rep->arp_sha[3], rep->arp_sha[4],
+           rep->arp_sha[5]);
 
     // ARPテーブルに追加
     add2arptable((struct in_addr *)rep->arp_spa, rep->arp_sha);
@@ -362,6 +372,11 @@ static void forward(struct ip *iph) {
     uint32_t len = ntohs(iph->ip_len);     // IPパケット長
     uint32_t ethlen = ETHER_HDR_LEN + len; // Ethernetフレーム長
 
+    if (entry->ifp != NULL && entry->ifp->addr.s_addr == iph->ip_dst.s_addr) {
+        ipv4_input(iph);
+        return;
+    }
+
     iph->ip_ttl--; // TTLを1減算
 
     // チェックサムを更新
@@ -395,5 +410,18 @@ static void forward(struct ip *iph) {
 
         // インターフェースへ出力
         ether_output(entry->ifp, eh, ethlen);
+    }
+}
+
+void print_arp() {
+    for (int i = 0; i < sizeof(arptable) / sizeof(arptable[0]); i++) {
+        if (arptable[i].ip_addr.s_addr != 0) {
+            char addr[16];
+            inet_ntop(PF_INET, &arptable[i].ip_addr, addr, sizeof(addr));
+            printf("%s %02X-%02X-%02X-%02X-%02X-%02X\n", addr,
+                   arptable[i].macaddr[0], arptable[i].macaddr[1],
+                   arptable[i].macaddr[2], arptable[i].macaddr[3],
+                   arptable[i].macaddr[4], arptable[i].macaddr[5]);
+        }
     }
 }

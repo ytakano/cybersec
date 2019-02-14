@@ -145,7 +145,6 @@ void ether_output(struct my_ifnet *ifp, struct ether_header *eh, int len) {
 
     ssize_t size = sendto(ifp->infd, eh, len, 0, (struct sockaddr *)&ifp->outun,
                           sizeof(ifp->outun));
-    printf("size = %zd\n", size);
     if (size < 0)
         perror("send");
 }

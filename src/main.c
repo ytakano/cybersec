@@ -139,6 +139,8 @@ void eventloop() {
                 print_if();
                 printf("\nroute:\n");
                 print_route();
+                printf("\narp:\n");
+                print_arp();
                 printf("\n");
             } else if (memcmp("tcp", buf, 4) == 0) {
                 send_tcp();
