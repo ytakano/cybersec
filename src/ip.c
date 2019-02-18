@@ -18,10 +18,17 @@
 
 #define SNDBUFSIZ 256
 
+// IPv4アドレスからハッシュ値を計算するマクロ
 #define IPHASH(ADDR)                                                           \
     (((uint8_t *)&(ADDR))[0] ^ ((uint8_t *)&(ADDR))[1] ^                       \
      ((uint8_t *)&(ADDR))[2] ^ ((uint8_t *)&(ADDR))[3])
 
+/*
+ * チェックサムを計算する関数
+ * 引数:
+ *   buf: バッファ
+ *   size: バッファのサイズ
+ */
 uint16_t cksum(void *buf, int size) {
     uint16_t *ptr = (uint16_t *)buf;
     uint32_t sum = 0;
@@ -50,6 +57,9 @@ struct ip2mac {
 
 struct ip2mac arptable[256]; // MACアドレステーブルのインスタンス
 
+/*
+ * 送信バッファの用構造体
+ */
 struct sendbuf {
     struct in_addr nextip;
     struct ether_header *eh;
@@ -61,6 +71,9 @@ LIST_HEAD(sendbuf_head, sendbuf) sbuf; // 送信バッファ
 
 static struct poptrie *poptrie; // ルーティングテーブル
 
+/*
+ * IPv4ルーティングテーブル用構造体
+ */
 struct fibentry {
     struct my_ifnet *ifp;
     struct in_addr nextip;
@@ -101,6 +114,11 @@ static void add2arptable(struct in_addr *addr, uint8_t *macaddr) {
     memcpy(arptable[hash].macaddr, macaddr, ETHER_ADDR_LEN);
 }
 
+/*
+ * パケットが自分宛てか判定する関数
+ * 引数:
+ *   iph: 入力パケット
+ */
 static bool is_to_me(struct ip *iph) {
     for (struct my_ifnet *np = LIST_FIRST(&ifs); np != NULL;
          np = LIST_NEXT(np, pointers)) {
@@ -111,6 +129,11 @@ static bool is_to_me(struct ip *iph) {
     return false;
 }
 
+/*
+ * IPv4パケット入力関数
+ * 引数:
+ *   iph: 入力パケット
+ */
 void ipv4_input(struct ip *iph) {
     // 自ホスト宛かチェック
     if (!is_to_me(iph)) {
@@ -137,11 +160,25 @@ void ipv4_input(struct ip *iph) {
     }
 }
 
+/*
+ * IPv4出力関数
+ * 引数:
+ *   iph: 出力パケット
+ */
 void ipv4_output(struct ip *iph) {
     iph->ip_ttl = 32;
     forward(iph);
 }
 
+/*
+ * IPv4ルーティングテーブルへ新規経路を追加する関数
+ * ネクストホップアドレスが無い場合はNULLを指定すること
+ * 引数:
+ *   ifp: 出力先インターフェース
+ *   next: ネクストホップアドレス
+ *   addr: 宛先ネットワークアドレス
+ *   plen: 宛先ネットワークアドレスのプレフィックス長
+ */
 void route_add(struct my_ifnet *ifp, struct in_addr *next, struct in_addr *addr,
                int plen) {
     struct rtentry *entry = malloc(sizeof(struct rtentry));
@@ -159,10 +196,18 @@ void route_add(struct my_ifnet *ifp, struct in_addr *next, struct in_addr *addr,
     LIST_INSERT_HEAD(&fib, fibe, pointers);
 }
 
+/*
+ * IPv4ルーティングテーブルから経路を取得する関数
+ * 引数:
+ *   addr: キーとなるIPv4アドレス
+ */
 static struct rtentry *route_lookup(struct in_addr *addr) {
     return (struct rtentry *)poptrie_lookup(poptrie, ntohl(addr->s_addr));
 }
 
+/*
+ * IPv4ルーティングテーブルをプリントする関数
+ */
 void print_route() {
     char addr[16];
     struct fibentry *fb;
@@ -178,6 +223,9 @@ void print_route() {
     }
 }
 
+/*
+ * IPv4初期化関数
+ */
 void init_ipv4() {
     poptrie = poptrie_init(NULL, 19, 22);
     if (poptrie == NULL) {
@@ -267,6 +315,12 @@ static void arp_req_input(struct my_ifnet *ifp, struct arphdr *arph) {
     ether_output(ifp, eh, ETHER_HDR_LEN + sizeof(struct ether_arp));
 }
 
+/*
+ * ARPリプライを受け取り、送信バッファ中のフレームを送信する関数
+ * 引数:
+ *   ifp: 入力インターフェース
+ *   arph:
+ */
 static void arp_reply_input(struct my_ifnet *ifp, struct arphdr *arph) {
     struct ether_arp *rep = (struct ether_arp *)arph;
 
@@ -413,6 +467,9 @@ static void forward(struct ip *iph) {
     }
 }
 
+/*
+ * ARPテーブルを表示する関数
+ */
 void print_arp() {
     for (int i = 0; i < sizeof(arptable) / sizeof(arptable[0]); i++) {
         if (arptable[i].ip_addr.s_addr != 0) {

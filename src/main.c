@@ -10,11 +10,16 @@
 #include <sys/time.h>
 #include <sys/types.h>
 
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
+/*
+ * 受信用ディスクリプタ登録用関数
+ */
 void add2event(int kq, int fd) {
     struct kevent kev;
 
@@ -22,6 +27,14 @@ void add2event(int kq, int fd) {
     kevent(kq, &kev, 1, NULL, 0, NULL);
 }
 
+/*
+ * IPv4, TCP SYNパケット生成用関数
+ * 引数:
+ *   buf: IPパケットへのポインタ
+ *   ifp: 送信用インターフェース
+ *   ipdst: 宛先IPv4アドレス
+ *   dport: 宛先ポート番号
+ */
 void gen_tcpsyn4(void *buf, struct my_ifnet *ifp, struct in_addr *ipdst,
                  uint16_t dport) {
     struct ip *iph = buf;
@@ -49,6 +62,9 @@ void gen_tcpsyn4(void *buf, struct my_ifnet *ifp, struct in_addr *ipdst,
     // TODO: checksum of TCP
 }
 
+/*
+ * インターフェース生成用関数
+ */
 struct my_ifnet *create_if() {
     char ipv4[16];
     int plen4;
@@ -73,6 +89,9 @@ struct my_ifnet *create_if() {
     return add_if(ipv4, plen4, NULL, 0, in, out);
 }
 
+/*
+ * TCP SYNパケット送信用関数
+ */
 void send_tcp() {
     struct in_addr ipdst;
     struct my_ifnet *ifp;
@@ -109,12 +128,41 @@ void send_tcp() {
     ipv4_output((struct ip *)buf);
 }
 
+/*
+ * ブリッジ設定用関数
+ */
+void set_bridge() {
+    char l2[20];
+    char l3[20];
+
+    printf("L2 bridge (y/n?): ");
+    scanf("%s", l2);
+
+    if (memcmp(l2, "y", 1) == 0) {
+        SET_L2BRIDGE(true);
+    } else if (memcmp(l2, "n", 1) == 0) {
+        SET_L2BRIDGE(false);
+    }
+
+    printf("L3 bridge (y/n?): ");
+    scanf("%s", l3);
+
+    if (memcmp(l3, "y", 1) == 0) {
+        SET_L3BRIDGE(true);
+    } else if (memcmp(l3, "n", 1) == 0) {
+        SET_L3BRIDGE(false);
+    }
+}
+
+/*
+ * イベントループ
+ */
 void eventloop() {
     int kq = kqueue();
     add2event(kq, STDIN_FILENO);
 
     for (;;) {
-        printf("show | create | tcp | exit\n> ");
+        printf("command = show | create | tcp | bridge | exit\n> ");
         fflush(stdout);
 
         struct kevent kev;
@@ -130,7 +178,7 @@ void eventloop() {
                 if (ifn == NULL) {
                     printf("failed to create an interface\n");
                 } else {
-                    add2event(kq, ifn->infd);
+                    add2event(kq, ifn->sockfd);
                     printf("interface #%d is successfully created\n\n",
                            ifn->idx);
                 }
@@ -141,14 +189,18 @@ void eventloop() {
                 print_route();
                 printf("\narp:\n");
                 print_arp();
+                printf("\nflags:\n");
+                print_flags();
                 printf("\n");
             } else if (memcmp("tcp", buf, 4) == 0) {
                 send_tcp();
             } else if (memcmp("exit", buf, 4) == 0) {
                 exit(0);
+            } else if (memcmp("bridge", buf, 4) == 0) {
+                set_bridge();
             } else {
                 if (strlen(buf) != 0)
-                    printf("%s is not supported\n\n", buf);
+                    printf("%s command is not supported\n\n", buf);
             }
         } else {
             dev_input(kev.ident);

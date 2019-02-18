@@ -8,8 +8,11 @@
 #include <stdio.h>
 #include <string.h>
 
+// MACアドレスのハッシュ値を計算するマクロ
 #define MACHASH(ADDR)                                                          \
     ((ADDR)[0] ^ (ADDR)[1] ^ (ADDR)[2] ^ (ADDR)[3] ^ (ADDR)[4] ^ (ADDR)[5])
+
+// ADDRがIPv4ブロードキャストアドレスなら真、それ以外なら偽を返すマクロ
 #define IS_BROADCAST(ADDR)                                                     \
     (((ADDR)[0] == 0xFF) && ((ADDR)[1] == 0xFF) && ((ADDR)[2] == 0xFF) &&      \
      ((ADDR)[3] == 0xFF) && ((ADDR)[4] == 0xFF) && ((ADDR)[5] == 0xFF))
@@ -47,7 +50,7 @@ static void add2mactable(struct my_ifnet *ifp, struct ether_header *eh) {
  *   対応するmy_ifnet構造体へのポインタ。
  *   ただし、テーブルにMACアドレスが存在しない場合はNULLが返る。
  * 引数:
- *   eh: 入力Ethernetフレーム
+ *   eh: 入力フレーム
  */
 static struct my_ifnet *find_interface(struct ether_header *eh) {
     // 宛先MACアドレスからハッシュ値を計算
@@ -64,7 +67,8 @@ static struct my_ifnet *find_interface(struct ether_header *eh) {
  * ブリッジ処理を行う関数
  * 引数:
  *   ifp: 入力インターフェース
- *   eh: 入力Ethernetフレーム
+ *   eh: 入力フレーム
+ *   len: 入力フレーム長
  */
 static void bridge_input(struct my_ifnet *ifp, struct ether_header *eh,
                          int len) {
@@ -92,6 +96,7 @@ static void bridge_input(struct my_ifnet *ifp, struct ether_header *eh,
  * 引数:
  *   ifp: 入力インターフェース
  *   eh: 入力フレーム
+ *   len: 入力フレーム長
  */
 void ether_input(struct my_ifnet *ifp, struct ether_header *eh, int len) {
     printf("ether_input:\n");
@@ -132,6 +137,13 @@ void ether_input(struct my_ifnet *ifp, struct ether_header *eh, int len) {
     return;
 }
 
+/*
+ * Ethernetフレーム出力関数
+ * 引数:
+ *   ifp: 出力インターフェース
+ *   eh: 出力フレーム
+ *   len: 出力フレーム長
+ */
 void ether_output(struct my_ifnet *ifp, struct ether_header *eh, int len) {
     printf("ether_output:\n");
     printf("    IF#: %d\n", ifp->idx);
@@ -143,8 +155,8 @@ void ether_output(struct my_ifnet *ifp, struct ether_header *eh, int len) {
            eh->ether_dhost[4], eh->ether_dhost[5]);
     printf("\n");
 
-    ssize_t size = sendto(ifp->infd, eh, len, 0, (struct sockaddr *)&ifp->outun,
-                          sizeof(ifp->outun));
+    ssize_t size = sendto(ifp->sockfd, eh, len, 0,
+                          (struct sockaddr *)&ifp->outun, sizeof(ifp->outun));
     if (size < 0)
         perror("send");
 }

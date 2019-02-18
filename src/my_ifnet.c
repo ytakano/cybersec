@@ -18,11 +18,19 @@ struct my_ifnet_head ifs;
 
 int numif = 0;
 
+/*
+ * インターフェース用の初期化関数
+ */
 void init_my_ifnet() {
     srand(time(NULL) + getpid());
     LIST_INIT(&ifs);
 }
 
+/*
+ * インターフェース番号に対応するmy_ifnet構造体へのポインタを取得する関数
+ * 引数:
+ *   idx: インターフェース番号
+ */
 struct my_ifnet *find_if(int idx) {
     for (struct my_ifnet *np = LIST_FIRST(&ifs); np != NULL;
          np = LIST_NEXT(np, pointers)) {
@@ -33,6 +41,16 @@ struct my_ifnet *find_if(int idx) {
     return NULL;
 }
 
+/*
+ * インターフェースを追加する関数
+ * 引数:
+ *   ipv4: IPv4アドレス
+ *   plen4: IPv4アドレスのプレフィックス長
+ *   ipv6: IPv6アドレス
+ *   plen6: IPv6アドレスのプレフィックス長
+ *   in: 入力用UNIXドメインソケットファイル
+ *   out: 出力用UNIXドメインソケットファイル
+ */
 struct my_ifnet *add_if(const char *ipv4, uint8_t plen4, const char *ipv6,
                         uint8_t plen6, const char *in, const char *out) {
     struct my_ifnet *ptr = malloc(sizeof(struct my_ifnet));
@@ -58,7 +76,7 @@ struct my_ifnet *add_if(const char *ipv4, uint8_t plen4, const char *ipv6,
     }
 
     // 入力用ソケット作成
-    ptr->infd = socket(PF_LOCAL, SOCK_DGRAM, 0);
+    ptr->sockfd = socket(PF_LOCAL, SOCK_DGRAM, 0);
     unlink(in);
 
     struct sockaddr_un sa;
@@ -67,7 +85,7 @@ struct my_ifnet *add_if(const char *ipv4, uint8_t plen4, const char *ipv6,
     sa.sun_len = sizeof(sa);
     strncpy(sa.sun_path, in, sizeof(sa.sun_path));
 
-    bind(ptr->infd, (struct sockaddr *)&sa, sizeof(sa));
+    bind(ptr->sockfd, (struct sockaddr *)&sa, sizeof(sa));
 
     memset(&ptr->outun, 0, sizeof(sa));
     ptr->outun.sun_family = PF_LOCAL;
@@ -106,10 +124,15 @@ struct my_ifnet *add_if(const char *ipv4, uint8_t plen4, const char *ipv6,
     return ptr;
 }
 
+/*
+ * インターフェース入力割り込み関数
+ * 引数:
+ *   fd: UNIXドメインソケットへのファイルデスクリプタ
+ */
 void dev_input(int fd) {
     for (struct my_ifnet *np = LIST_FIRST(&ifs); np != NULL;
          np = LIST_NEXT(np, pointers)) {
-        if (np->infd == fd) {
+        if (np->sockfd == fd) {
             char buf[4096];
             ssize_t size;
         again:
@@ -128,6 +151,9 @@ void dev_input(int fd) {
     }
 }
 
+/*
+ * インターフェース情報プリント関数
+ */
 void print_if() {
     for (struct my_ifnet *np = LIST_FIRST(&ifs); np != NULL;
          np = LIST_NEXT(np, pointers)) {

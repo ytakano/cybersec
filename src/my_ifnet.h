@@ -16,7 +16,7 @@ struct my_ifnet {
     uint8_t plen6;                 // IPv6プレフィックス長
     char infile[128];              // 入力UNIXファイル名
     char outfile[128];             // 出力UNIXファイル名
-    int infd;                      // 入力先UNIXドメインソケット
+    int sockfd;                    // 入力先UNIXドメインソケット
     struct sockaddr_un outun;      // 出力UNIXアドレス
     LIST_ENTRY(my_ifnet) pointers; // リスト
 };
