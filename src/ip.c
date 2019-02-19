@@ -326,9 +326,9 @@ static void arp_reply_input(struct my_ifnet *ifp, struct arphdr *arph) {
 
     char addr[16];
     inet_ntop(PF_INET, rep->arp_spa, addr, sizeof(addr));
-    printf("ARP: %s has %02X-%02X-%02X-%02X-%02X-%02X\n", addr, rep->arp_sha[0],
+    printf("ARP: %02X-%02X-%02X-%02X-%02X-%02X has %s\n", rep->arp_sha[0],
            rep->arp_sha[1], rep->arp_sha[2], rep->arp_sha[3], rep->arp_sha[4],
-           rep->arp_sha[5]);
+           rep->arp_sha[5], addr);
 
     // ARPテーブルに追加
     add2arptable((struct in_addr *)rep->arp_spa, rep->arp_sha);

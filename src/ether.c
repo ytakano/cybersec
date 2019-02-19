@@ -109,13 +109,14 @@ void ether_input(struct my_ifnet *ifp, struct ether_header *eh, int len) {
            eh->ether_dhost[4], eh->ether_dhost[5]);
     printf("\n");
 
-    // 宛先MACアドレスが自インターフェース宛かチェック
-    if (memcmp(ifp->ifaddr, eh->ether_dhost, ETHER_ADDR_LEN) != 0 &&
-        !IS_BROADCAST(eh->ether_dhost)) {
-        // 自インターフェース宛でない場合、L2ブリッジのフラグが立っていればL2ブリッジ処理へ
+    if (IS_BROADCAST(eh->ether_dhost)) {
+        // ブロードキャストアドレスの場合、ブリッジ処理へ
         if (IS_L2BRIDGE)
             bridge_input(ifp, eh, len);
-
+    } else if (memcmp(ifp->ifaddr, eh->ether_dhost, ETHER_ADDR_LEN) != 0) {
+        // 宛先MACアドレスが自インターフェース宛でないならブリッジ処理を行い終了
+        if (IS_L2BRIDGE)
+            bridge_input(ifp, eh, len);
         return;
     }
 
