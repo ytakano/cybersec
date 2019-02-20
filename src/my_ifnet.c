@@ -119,7 +119,9 @@ struct my_ifnet *add_if(const char *ipv4, uint8_t plen4, const char *ipv6,
     uint32_t mask = ~((1 << (32 - plen4)) - 1);
     uint32_t dst = ntohl(ptr->addr.s_addr) & mask;
     dst = htonl(dst);
-    route_add(ptr, &nextip, (struct in_addr *)&dst, plen4);
+
+    if (dst != 0)
+        route_add(ptr, &nextip, (struct in_addr *)&dst, plen4);
 
     return ptr;
 }

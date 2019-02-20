@@ -17,6 +17,7 @@ void ipv4_output(struct ip *iph);
 void arp_input(struct my_ifnet *ifp, struct arphdr *arph);
 void route_add(struct my_ifnet *ifp, struct in_addr *next, struct in_addr *addr,
                int plen);
+struct rtentry *route_lookup(struct in_addr *addr);
 void print_route();
 void print_arp();
 

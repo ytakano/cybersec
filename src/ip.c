@@ -172,7 +172,7 @@ void ipv4_output(struct ip *iph) {
 
 /*
  * IPv4ルーティングテーブルへ新規経路を追加する関数
- * ネクストホップアドレスが無い場合はNULLを指定すること
+ * ネクストホップアドレスが無い場合はnextにNULLを指定すること
  * 引数:
  *   ifp: 出力先インターフェース
  *   next: ネクストホップアドレス
@@ -201,7 +201,7 @@ void route_add(struct my_ifnet *ifp, struct in_addr *next, struct in_addr *addr,
  * 引数:
  *   addr: キーとなるIPv4アドレス
  */
-static struct rtentry *route_lookup(struct in_addr *addr) {
+struct rtentry *route_lookup(struct in_addr *addr) {
     return (struct rtentry *)poptrie_lookup(poptrie, ntohl(addr->s_addr));
 }
 
@@ -218,7 +218,7 @@ void print_route() {
             printf("#%d\n", fb->ifp->idx);
         } else {
             inet_ntop(PF_INET, &fb->nextip, addr, sizeof(addr));
-            printf("%s\n", addr);
+            printf("%s #%d\n", addr, fb->ifp->idx);
         }
     }
 }

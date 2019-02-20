@@ -132,11 +132,11 @@ void send_tcp() {
  * ブリッジ設定用関数
  */
 void set_bridge() {
-    char l2[20];
-    char l3[20];
+    char l2[4];
+    char l3[4];
 
     printf("L2 bridge (y/n?): ");
-    scanf("%s", l2);
+    scanf("%4s", l2);
 
     if (memcmp(l2, "y", 1) == 0) {
         SET_L2BRIDGE(true);
@@ -145,13 +145,60 @@ void set_bridge() {
     }
 
     printf("L3 bridge (y/n?): ");
-    scanf("%s", l3);
+    scanf("%4s", l3);
 
     if (memcmp(l3, "y", 1) == 0) {
         SET_L3BRIDGE(true);
     } else if (memcmp(l3, "n", 1) == 0) {
         SET_L3BRIDGE(false);
     }
+}
+
+/*
+ * IPv4経路追加コマンド用関数
+ */
+void route_add_cmd() {
+    char nw[16];
+    char next[16];
+    int plen4;
+    int ifnum;
+
+    printf("IPv4 network address: ");
+    fflush(stdout);
+    scanf("%15s", nw);
+
+    printf("prefix length of IPv4 network address: ");
+    fflush(stdout);
+    scanf("%d", &plen4);
+
+    printf("next hop IPv4 address: ");
+    fflush(stdout);
+    scanf("%15s", next);
+
+    struct in_addr in1, in2;
+    if (!inet_pton(PF_INET, nw, &in1)) {
+        perror("inet_pton");
+        return;
+    }
+
+    if (!inet_pton(PF_INET, next, &in2)) {
+        perror("inet_pton");
+        return;
+    }
+
+    printf("interface: ");
+    fflush(stdout);
+    scanf("%d", &ifnum);
+
+    struct my_ifnet *ifp = find_if(ifnum);
+    if (ifp == NULL) {
+        printf("interface #%d was not found\n", ifnum);
+        return;
+    }
+
+    route_add(ifp, &in2, &in1, plen4);
+
+    printf("added route to %s/%d via %s (IF #%d)\n\n", nw, plen4, next, ifnum);
 }
 
 /*
@@ -162,7 +209,7 @@ void eventloop() {
     add2event(kq, STDIN_FILENO);
 
     for (;;) {
-        printf("command = show | create | tcp | bridge | exit\n> ");
+        printf("command = show | create | tcp | fwdctl | route | exit\n> ");
         fflush(stdout);
 
         struct kevent kev;
@@ -196,8 +243,10 @@ void eventloop() {
                 send_tcp();
             } else if (memcmp("exit", buf, 4) == 0) {
                 exit(0);
-            } else if (memcmp("bridge", buf, 4) == 0) {
+            } else if (memcmp("fwdctl", buf, 4) == 0) {
                 set_bridge();
+            } else if (memcmp("route", buf, 4) == 0) {
+                route_add_cmd();
             } else {
                 if (strlen(buf) != 0)
                     printf("%s command is not supported\n\n", buf);
