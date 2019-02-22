@@ -95,51 +95,95 @@ L3スイッチはローカルなネットワーク同士をつなぎ合わせる
     \end{itemize}
 \end{itembox}
 
+\subsection{おもちゃのネットワークスタック} \label{sec:stack}
+
+\begin{figure}[tb]
+    \centering
+    \includegraphics[width=14cm,pagebox=artbox]{figs/nwstack.pdf}
+    \caption{おもちゃのネットワークスタックのデータフロー図}
+    \label{fig:tcpipstack}
+\end{figure}
+
+これより本章では、おもちゃのネットワークスタックを用いて、
+ネットワークスタックの設計と実装を解説する。
+おもちゃと言っても、実際にIPルータやEthernetブリッジとして動作するれっきとしたネットワークスタックである。
+図~\ref{fig:tcpipstack}はおもちゃのネットワークスタックのデータフロー図を示している。
+この図の下部には、入力と出力用のEthernet Input/Ouptput Queueというキューがあり、
+ここで物理的な入出力が行われる。
+実際に、ネットワークインターフェースカードには入出力用のキューが用意されており、
+デバイスドライバはこれらキューに対して読み書きすることでデータの送受信を行う。
+
 \subsection{データリンク層} \label{sec:datalink}
 
-\begin{lstlisting}[caption=Ethernetプロトコルヘッダ定義 (/usr/include/netinet/if\_ether.h),label=src:if_ether.h]
-#define ETHER_ADDR_LEN  6       /* Ethernet address length              */
-
+\begin{lstlisting}[caption=ether\_input関数 (ether.c),label=src:ether_input]
 /*
- * Ethernet address - 6 octets
+ * Ethernetフレーム入力関数
+ * 引数:
+ *   ifp: 入力インターフェース
+ *   eh: 入力フレーム
+ *   len: 入力フレーム長
  */
-struct ether_addr {
-        u_int8_t ether_addr_octet[ETHER_ADDR_LEN];
-};
+void ether_input(struct my_ifnet *ifp, struct ether_header *eh, int len) {
+    printf("ether_input:\n");
+    printf("    IF#: %d\n", ifp->idx);
+    printf("    SRC MAC: %02X-%02X-%02X-%02X-%02X-%02X\n", eh->ether_shost[0],
+           eh->ether_shost[1], eh->ether_shost[2], eh->ether_shost[3],
+           eh->ether_shost[4], eh->ether_shost[5]);
+    printf("    DST MAC: %02X-%02X-%02X-%02X-%02X-%02X\n", eh->ether_dhost[0],
+           eh->ether_dhost[1], eh->ether_dhost[2], eh->ether_dhost[3],
+           eh->ether_dhost[4], eh->ether_dhost[5]);
+    printf("\n");
 
-/*
- * The length of the combined header.
- */
-struct  ether_header {
-        u_int8_t  ether_dhost[ETHER_ADDR_LEN];
-        u_int8_t  ether_shost[ETHER_ADDR_LEN];
-        u_int16_t ether_type;
-};
-\end{lstlisting}
-
-
-\begin{lstlisting}[caption=Ethernet入力 (/usr/include/netinet/if\_ether.h),label=src:if_ether]
-void ether_input(struct ether_header *eh)
-{
-    if (memcmp(eh->ether_dhost, my_ether_addr, ETHER_ADDR_LEN)) {
-        bridge_input(eh);
+    if (IS_BROADCAST(eh->ether_dhost)) {
+        // ブロードキャストアドレスの場合、ブリッジ処理へ
+        if (IS_L2BRIDGE)
+            bridge_input(ifp, eh, len);
+    } else if (memcmp(ifp->ifaddr, eh->ether_dhost, ETHER_ADDR_LEN) != 0) {
+        // 宛先MACアドレスが自インターフェース宛でないならブリッジ処理を行い終了
+        if (IS_L2BRIDGE)
+            bridge_input(ifp, eh, len);
         return;
     }
 
-    switch (eh->ether_type) {
-    case ETHERTYPE_IP:
-        ipv4_input(&eh[1]);
+    switch (ntohs(eh->ether_type)) {
+    case ETHERTYPE_IP: // IPv4入力
+        ipv4_input((struct ip *)((uint8_t *)eh + ETHER_HDR_LEN));
         break;
-    case ETHERTYPE_IP6:
-        ipv6_input(&eh[1]);
+    case ETHERTYPE_IPV6: // IPv6入力
+        ipv6_input((struct ip6_hdr *)((uint8_t *)eh + ETHER_HDR_LEN));
+        break;
+    case ETHERTYPE_ARP: // ARP入力
+        arp_input(ifp, (struct arphdr *)((uint8_t *)eh + ETHER_HDR_LEN));
         break;
     default:
+        printf("eh->ether_type is neither IPv6 nor IPv6\n");
         return;
     }
 
     return;
-}
-\end{lstlisting}
+}\end{lstlisting}
+
+
+\begin{lstlisting}[caption=Ethernetプロトコルヘッダ定義 (/usr/include/netinet/if\_ether.h),label=src:if_ether.h]
+    #define ETHER_ADDR_LEN  6       /* Ethernet address length              */
+
+    /*
+     * Ethernet address - 6 octets
+     */
+    struct ether_addr {
+            u_int8_t ether_addr_octet[ETHER_ADDR_LEN];
+    };
+
+    /*
+     * The length of the combined header.
+     */
+    struct  ether_header {
+            u_int8_t  ether_dhost[ETHER_ADDR_LEN];
+            u_int8_t  ether_shost[ETHER_ADDR_LEN];
+            u_int16_t ether_type;
+    };
+    \end{lstlisting}
+
 
 
 \subsection{ネットワーク層} \label{sec:network}

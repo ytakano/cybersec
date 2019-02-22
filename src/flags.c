@@ -11,7 +11,7 @@ void print_flags() {
     else
         printf("false\n");
 
-    printf("    L3 bridge: ");
+    printf("    IPv4 routing: ");
     if (IS_L3BRIDGE)
         printf("true\n");
     else

@@ -1,7 +1,9 @@
+#include "arp.h"
 #include "ether.h"
 #include "flags.h"
 #include "ip.h"
 #include "my_ifnet.h"
+#include "tcp.h"
 
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
@@ -25,41 +27,6 @@ void add2event(int kq, int fd) {
 
     EV_SET(&kev, fd, EVFILT_READ, EV_ADD, 0, 0, NULL);
     kevent(kq, &kev, 1, NULL, 0, NULL);
-}
-
-/*
- * IPv4, TCP SYNパケット生成用関数
- * 引数:
- *   buf: IPパケットへのポインタ
- *   ifp: 送信用インターフェース
- *   ipdst: 宛先IPv4アドレス
- *   dport: 宛先ポート番号
- */
-void gen_tcpsyn4(void *buf, struct my_ifnet *ifp, struct in_addr *ipdst,
-                 uint16_t dport) {
-    struct ip *iph = buf;
-    struct tcphdr *tcph = (struct tcphdr *)&((uint8_t *)buf)[sizeof(struct ip)];
-
-    iph->ip_v = 4;
-    iph->ip_hl = sizeof(struct ip) >> 2;
-    iph->ip_tos = 0;
-    iph->ip_len = htons(sizeof(struct ip) + sizeof(struct tcphdr));
-    iph->ip_id = 0;
-    iph->ip_off = 0;
-    iph->ip_p = IPPROTO_TCP;
-    iph->ip_src = ifp->addr;
-    iph->ip_dst = *ipdst;
-
-    tcph->th_dport = htons(dport);
-    tcph->th_seq = htonl(rand());
-    tcph->th_ack = 0;
-    tcph->th_x2 = 0;
-    tcph->th_off = sizeof(struct tcphdr) >> 2;
-    tcph->th_flags = TH_SYN;
-    tcph->th_win = htons(4096);
-    tcph->th_urp = 0;
-
-    // TODO: checksum of TCP
 }
 
 /*
@@ -123,9 +90,7 @@ void send_tcp() {
         return;
     }
 
-    gen_tcpsyn4(buf, ifp, &ipdst, dport);
-
-    ipv4_output((struct ip *)buf);
+    tcp_output(buf, ifp, &ipdst, dport);
 }
 
 /*
@@ -144,7 +109,7 @@ void set_bridge() {
         SET_L2BRIDGE(false);
     }
 
-    printf("L3 bridge (y/n?): ");
+    printf("IPv4 routing (y/n?): ");
     scanf("%4s", l3);
 
     if (memcmp(l3, "y", 1) == 0) {

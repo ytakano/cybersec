@@ -57,7 +57,7 @@ struct fibentry {
 
 LIST_HEAD(fib_head, fibentry) fib; // FIB
 
-static void forward(struct ip *iph);
+static void ipv4_forward(struct ip *iph);
 
 /*
  * パケットが自分宛てか判定する関数
@@ -88,7 +88,7 @@ void ipv4_input(struct ip *iph) {
                 return;
 
             // 自ホスト宛でない場合転送
-            forward(iph);
+            ipv4_forward(iph);
         }
         return;
     }
@@ -112,7 +112,7 @@ void ipv4_input(struct ip *iph) {
  */
 void ipv4_output(struct ip *iph) {
     iph->ip_ttl = 32;
-    forward(iph);
+    ipv4_forward(iph);
 }
 
 /*
@@ -186,7 +186,7 @@ void init_ipv4() {
  * 引数:
  *   iph: 転送するIPパケットへのポインタ
  */
-static void forward(struct ip *iph) {
+static void ipv4_forward(struct ip *iph) {
     // ルーティングテーブルから宛先インターフェースを決定
     struct rtentry *entry = route_lookup(&iph->ip_dst);
     if (entry == NULL) // 宛先がルーティングテーブルに存在しない

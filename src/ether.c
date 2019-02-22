@@ -1,4 +1,5 @@
 #include "ether.h"
+#include "arp.h"
 #include "flags.h"
 #include "ip.h"
 #include "ipv6.h"
