@@ -113,7 +113,140 @@ L3スイッチはローカルなネットワーク同士をつなぎ合わせる
 実際に、ネットワークインターフェースカードには入出力用のキューが用意されており、
 デバイスドライバはこれらキューに対して読み書きすることでデータの送受信を行う。
 
+なお、このおもちゃのネットワークは、Ethernetブリッジや、IPv4のルーティングは行うことができるが、
+TCPのセッション管理などは行えないし、扱えるのは基本的にユニキャストのみで、マルチキャスト通信はサポートしていない。
+また、実際のOSではネットワークスタックの上にソケットレイヤが配置され、
+ネットワークに関する操作が抽象化されているが、おもちゃのネットワークスタックではソケットレイヤは省略されている。
+すなわち、あくまでも、ファイアウォールなどを理解して運用するために必要最低限と思われる機能のみが実装されている。
+
+\subsection{ネットワークインターフェース} \label{sec:nwif}
+
+スタックの説明を行う前に、ネットワークインターフェース情報を表すための構造体を説明しよう。
+ソースコード~\ref{src:my_ifnet.h}は、おもちゃのネットワークスタックで定義するネットワークインターフェース用のmy\_ifnet構造体となる。
+
+\begin{lstlisting}[caption=ネットワークインターフェースを表す構造体 (my\_ifnet.h),label=src:my_ifnet.h]
+// インターフェース情報を保持する構造体
+struct my_ifnet {
+    int idx;                       // インデックス
+    uint8_t ifaddr[6];             // MACアドレス
+    struct in_addr addr;           // IPv4アドレス
+    struct in6_addr addr6;         // IPv6アドレス
+    uint8_t plen;                  // IPv4プレフィックス長
+    uint8_t plen6;                 // IPv6プレフィックス長
+    char infile[128];              // 入力UNIXファイル名
+    char outfile[128];             // 出力UNIXファイル名
+    int sockfd;                    // 入力先UNIXドメインソケット
+    struct sockaddr_un outun;      // 出力UNIXアドレス
+    LIST_ENTRY(my_ifnet) pointers; // リスト
+};
+\end{lstlisting}
+
+my\_ifnet構造体のメンバ変数は基本的にはコメントにあるとおりだが、もう少し詳しく説明したのが
+表~\ref{tab:my_ifnet}となる。
+表~\ref{tab:my_ifnet}で示すように、ネットワークインターフェースには各種アドレスが紐付けられる。
+また、おもちゃのネットワークスタックでは、データの送受信にUNIXドメインソケットのデータグラム通信を行うため、
+UNIXドメインソケット用のデータがいくつが用意されている。
+
+\begin{table}[tb]
+    \centering
+    \caption{my\_ifnet構造体のメンバ変数} \label{tab:my_ifnet}
+    \begin{tabular}{rl}
+        idx & 複数インターフェースの番号を識別するためのメンバ変数 \\
+        addr & インターフェースに対応付けられたIPv4アドレス \\
+        addr6 & インターフェースに対応付けられたIPv6アドレス \\
+        plen & IPv4プレフィックスアドレス（\ref{sec:network}節にて解説） \\
+        plen6 & IPv6プレフィックスアドレス（\ref{sec:network}節にて解説） \\
+        infile & データ受信を行うためのUNIXドメインソケットへのファイル名 \\
+        outfile & データ送信を行うためのUNIXドメインソケットへのファイル名 \\
+        sockfd & データ受信用のUNIXドメインソケットへのデスクリプタ \\
+        outun & データ送信用のUNIXドメインソケットへのアドレス \\
+        pointers & 複数インターフェースをリストで管理するためのポインタ。sys/queue.hを利用 \\
+    \end{tabular}
+\end{table}
+
+ソースコード~\ref{tab:my_ifnet}はおもちゃのネットワークスタックの割り込みハンドラを表している。
+割り込みハンドラとは、ネットワークカードにデータが到着した際に呼び出される関数のことを指す。
+実際のOSでは物理的な入力が割り込みハンドラを起動するが、おもちゃのネットワークスタックでは
+UNIXドメインソケットへの入力があったときにdev\_input関数を呼び出すようにしている。
+
+\begin{lstlisting}[caption=割り込みハンドラ (my\_ifnet.c),label=src:my_ifnet.c]
+/*
+ * インターフェース入力割り込み関数
+ * 引数:
+ *   fd: UNIXドメインソケットへのファイルデスクリプタ
+ */
+void dev_input(int fd) {
+    for (struct my_ifnet *np = LIST_FIRST(&ifs); np != NULL;
+         np = LIST_NEXT(np, pointers)) {
+        if (np->sockfd == fd) {
+            char buf[4096];
+            ssize_t size;
+        again:
+            size = recv(fd, buf, sizeof(buf), 0);
+            if (size < 0) {
+                if ((errno) == EAGAIN)
+                    goto again;
+
+                perror("recv");
+                break;
+            }
+
+            ether_input(np, (struct ether_header *)buf, size);
+            break;
+        }
+    }
+}
+\end{lstlisting}
+
+ソースコード~\ref{tab:my_ifnet}では引数に入力用のUNIXドメインソケットを受け取り、
+7〜8行目で対応するUNIXドメインソケットを持つmy\_ifnet構造体をリストから検索している。
+入力インターフェースのmy\_ifnet構造体が見つかったら（9行目）、13行目でデータ読み込みを行っている。
+14〜20行目エラー処理で、読み込みに失敗した場合はerrnoがEAGAINであれば、再度読み直し
+それ以外であれば読み込み失敗として関数を抜ける。
+データを読み込んだ後、22行目でether\_input関数を呼び出して実際の処理に入る。
+これは図~\ref{fig:tcpipstack}で示される、Ethernet Input Queueからether\_input関数へのデータフローに相当する。
+
+\begin{itembox}[l]{\bf 重要ポイント}
+    \begin{itemize}
+        \item ネットワークインターフェースカードにデータが到着した際に、OSで設定した割り込みハンドラと呼ばれる関数が呼び出される
+        \item 割り込みハンドラから、実際にネットワーク処理を行うための関数が呼ばれる
+    \end{itemize}
+\end{itembox}
+
 \subsection{データリンク層} \label{sec:datalink}
+
+ソースコード~\ref{src:if_ether.h}はEthernet (IEEE 802.3) プロトコルのヘッダ構造体を示している。
+我々が普段利用している無線や有線のEthernetでは、内部的にはこのようなフォーマットのヘッダがデータの先頭に付与され、
+その後にIPヘッダ、TCPヘッダなどのより上位のヘッダが続き、最後にアプリケーションデータが続く。
+もう少し正確に言うと、ソースコード~\ref{src:if_ether.h}で示すEthernetヘッダの前にプリアンブルなどの
+ハードウェアで利用されるデータが続くが、本書ではその説明は割愛する。
+
+\begin{lstlisting}[caption=Ethernetプロトコルヘッダ定義 (/usr/include/netinet/if\_ether.h),label=src:if_ether.h]
+#define ETHER_ADDR_LEN  6       /* Ethernet address length              */
+
+/*
+ * The length of the combined header.
+ */
+struct  ether_header {
+        u_int8_t  ether_dhost[ETHER_ADDR_LEN];
+        u_int8_t  ether_shost[ETHER_ADDR_LEN];
+        u_int16_t ether_type;
+};
+\end{lstlisting}
+
+ソースコード~\ref{src:if_ether.h}で示されるように、
+Ethernetヘッダの構造体は、OpenBSDでは、/usr/include/netinet/if\_ether.h にて定義されている。
+なお、以降特に断りがない限り対象とするOSはOpenBSDとし、/usr/includeのパスから始まるソースコードは、
+OSが提供するソースコードであるとする。
+1行目のETHER\_ADDR\_LENでは、Ethernetアドレス（MACアドレス）のバイト数を6バイトと定義している。
+6行目以降がEthernetヘッダを示すether\_header構造体となる。
+ether\_header構造体では、ether\_dhostとether\_shostというメンバ変数を持ち、
+それぞれ宛先MACアドレスと送信元MACアドレスを示している。
+ether\_typeメンバ変数は、Ethernetヘッダ以降に続くプロトコル種類を示している。
+
+ether\_typeメンバ変数で利用できる値はIANAによって定義されている~\footnote{\url{https://www.iana.org/assignments/ieee-802-numbers/ieee-802-numbers.xhtml} (ethernet type ianaで検索)}。
+例えば、IPv4が続く場合は16進数表記で0x0800という値がether\_typeに格納される。
+他には、IPv6の場合は0x08DD、仮想的なLANを構築するためのIEEE 802.1Q VLANプロトコルの場合は0x8100が格納される。
 
 \begin{lstlisting}[caption=ether\_input関数 (ether.c),label=src:ether_input]
 /*
@@ -163,28 +296,7 @@ void ether_input(struct my_ifnet *ifp, struct ether_header *eh, int len) {
     return;
 }\end{lstlisting}
 
-
-\begin{lstlisting}[caption=Ethernetプロトコルヘッダ定義 (/usr/include/netinet/if\_ether.h),label=src:if_ether.h]
-    #define ETHER_ADDR_LEN  6       /* Ethernet address length              */
-
-    /*
-     * Ethernet address - 6 octets
-     */
-    struct ether_addr {
-            u_int8_t ether_addr_octet[ETHER_ADDR_LEN];
-    };
-
-    /*
-     * The length of the combined header.
-     */
-    struct  ether_header {
-            u_int8_t  ether_dhost[ETHER_ADDR_LEN];
-            u_int8_t  ether_shost[ETHER_ADDR_LEN];
-            u_int16_t ether_type;
-    };
-    \end{lstlisting}
-
-
+ソースコード~\ref{src:ether_input}はおもちゃのネットワークスタックのEthernetフレームを受け取り処理を行うethernet\_input関数である。
 
 \subsection{ネットワーク層} \label{sec:network}
 
