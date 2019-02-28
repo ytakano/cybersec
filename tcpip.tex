@@ -114,10 +114,10 @@ L3スイッチはローカルなネットワーク同士をつなぎ合わせる
 デバイスドライバはこれらキューに対して読み書きすることでデータの送受信を行う。
 
 なお、このおもちゃのネットワークは、Ethernetブリッジや、IPv4のルーティングは行うことができるが、
-TCPのセッション管理などは行えないし、扱えるのは基本的にユニキャストのみで、マルチキャスト通信はサポートしていない。
+TCPのセッション管理などは行えないし、扱えるのは基本的にIPはユニキャストのみで、IPマルチキャスト通信はサポートしていない。
 また、実際のOSではネットワークスタックの上にソケットレイヤが配置され、
 ネットワークに関する操作が抽象化されているが、おもちゃのネットワークスタックではソケットレイヤは省略されている。
-すなわち、あくまでも、ファイアウォールなどを理解して運用するために必要最低限と思われる機能のみが実装されている。
+すなわち、あくまでも、ネットワークスタックの仕組みから理解してファイアウォールなどを運用するために必要最低限と思われる機能のみが実装されている。
 
 \subsection{ネットワークインターフェース} \label{sec:nwif}
 
@@ -215,13 +215,13 @@ void dev_input(int fd) {
 
 \subsection{データリンク層} \label{sec:datalink}
 
-ソースコード~\ref{src:if_ether.h}はEthernet (IEEE 802.3) プロトコルのヘッダ構造体を示している。
+ソースコード~\ref{src:ethernet.h}はEthernet (IEEE 802.3) プロトコルのヘッダ構造体を示している。
 我々が普段利用している無線や有線のEthernetでは、内部的にはこのようなフォーマットのヘッダがデータの先頭に付与され、
 その後にIPヘッダ、TCPヘッダなどのより上位のヘッダが続き、最後にアプリケーションデータが続く。
-もう少し正確に言うと、ソースコード~\ref{src:if_ether.h}で示すEthernetヘッダの前にプリアンブルなどの
+もう少し正確に言うと、ソースコード~\ref{src:ethernet.h}で示すEthernetヘッダの前にプリアンブルなどの
 ハードウェアで利用されるデータが続くが、本書ではその説明は割愛する。
 
-\begin{lstlisting}[caption=Ethernetプロトコルヘッダ定義 (/usr/include/netinet/if\_ether.h),label=src:if_ether.h]
+\begin{lstlisting}[caption=Ethernetプロトコルヘッダ定義 (/usr/include/net/ethernet.h),label=src:ethernet.h]
 #define ETHER_ADDR_LEN  6       /* Ethernet address length              */
 
 /*
@@ -232,10 +232,14 @@ struct  ether_header {
         u_int8_t  ether_shost[ETHER_ADDR_LEN];
         u_int16_t ether_type;
 };
+
+#define ETHERTYPE_IP            0x0800  /* IP protocol */
+#define ETHERTYPE_ARP           0x0806  /* Addr. resolution protocol */
+#define ETHERTYPE_IPV6          0x86dd  /* IPv6 */
 \end{lstlisting}
 
-ソースコード~\ref{src:if_ether.h}で示されるように、
-Ethernetヘッダの構造体は、OpenBSDでは、/usr/include/netinet/if\_ether.h にて定義されている。
+ソースコード~\ref{src:ethernet.h}で示されるように、
+Ethernetヘッダの構造体は、OpenBSDでは、/usr/include/net/ethernet.h にて定義されている。
 なお、以降特に断りがない限り対象とするOSはOpenBSDとし、/usr/includeのパスから始まるソースコードは、
 OSが提供するソースコードであるとする。
 1行目のETHER\_ADDR\_LENでは、Ethernetアドレス（MACアドレス）のバイト数を6バイトと定義している。
@@ -244,11 +248,24 @@ ether\_header構造体では、ether\_dhostとether\_shostというメンバ変�
 それぞれ宛先MACアドレスと送信元MACアドレスを示している。
 ether\_typeメンバ変数は、Ethernetヘッダ以降に続くプロトコル種類を示している。
 
-ether\_typeメンバ変数で利用できる値はIANAによって定義されている~\footnote{\url{https://www.iana.org/assignments/ieee-802-numbers/ieee-802-numbers.xhtml} (ethernet type ianaで検索)}。
+ether\_typeメンバ変数で利用できる値はIANAによって定義されている~\cite{ieee802}。
 例えば、IPv4が続く場合は16進数表記で0x0800という値がether\_typeに格納される。
 他には、IPv6の場合は0x08DD、仮想的なLANを構築するためのIEEE 802.1Q VLANプロトコルの場合は0x8100が格納される。
+この値はether\_header構造体と同じファイルにて定義されており、
+ソースコード\ref{src:ethernet.h}に12〜14行目に一部抜粋してある。
+ただし、ether\_typeメンバ変数のバイトオーダはビッグエンディアンであるため、
+比較や格納する際はバイトオーダを変換してから行わなければならない。
+
+ソースコード~\ref{src:ether_input}はおもちゃのネットワークスタックのEthernetフレームを受け取り処理を行うethernet\_input関数である。
+この関数では、引数に入力インターフェースを指すmy\_ifnet構造体のポインタ、入力Ethernetフレームへのポインタ、フレーム長をとり、
+Ethernetヘッダ中のプロトコルタイプに応じて上位レイヤの関数に渡している。
 
 \begin{lstlisting}[caption=ether\_input関数 (ether.c),label=src:ether_input]
+// ADDRがIPv4ブロードキャストアドレスなら真、それ以外なら偽を返すマクロ
+#define IS_BROADCAST(ADDR)                                                     \
+    (((ADDR)[0] == 0xFF) && ((ADDR)[1] == 0xFF) && ((ADDR)[2] == 0xFF) &&      \
+     ((ADDR)[3] == 0xFF) && ((ADDR)[4] == 0xFF) && ((ADDR)[5] == 0xFF))
+
 /*
  * Ethernetフレーム入力関数
  * 引数:
@@ -296,7 +313,38 @@ void ether_input(struct my_ifnet *ifp, struct ether_header *eh, int len) {
     return;
 }\end{lstlisting}
 
-ソースコード~\ref{src:ether_input}はおもちゃのネットワークスタックのEthernetフレームを受け取り処理を行うethernet\_input関数である。
+14〜22行目では入力Ethernetフレームの送信元と宛先MACアドレスを表示している。
+24行目では、宛先がブロードキャストアドレスかチェックしている。
+すなわち、FF-FF-FF-FF-FF-FFというMACアドレスがEthernetのブロードキャストアドレスであるため、
+この値かどうかを、IS\_BROADCASTマクロで判定している。
+宛先がブロードキャストアドレスの場合かつ、L2ブリッジが有効であるなら、
+L2ブリッジ処理を行うbridge\_input処理を行い、自身のネットワークスタック入力処理へと進む。
+28行目では、宛先が受信したネットワークインターフェースのMACアドレスと同じであるか
+（すなわち自分宛てであるか）をチェックし、自分宛てで無いならば、L2ブリッジが有効の場合に
+L2ブリッジ処理を行う関数へデータを渡し、ether\_input処理を終了する。
+L2ブリッジが有効かどうかは、IS\_L2BRIDGEというマクロで判定する。
+
+35行目から始まるswitch文では、上位のレイヤのプロトコルタイプを判別して、
+対応するプロトコルの関数に渡している。
+おもちゃのネットワークスタックでは、IPv4のみに対応しているが、
+例のためにIPv6用のダミー関数も用意している。
+また、IPv4で通信を行うためには、アドレス解決プロトコル（Address Resolution Protocol、ARP）~\cite{RFC0862}
+というプロトコルでMACアドレスとIPv4アドレスの対応の解決を行わなければならない。
+そのため、おもちゃのネットワークスタックでもARPをサポートしている。
+
+なお、ETHERTYPE\_IP、ETHERTYPE\_IPV6、ETHERTYPE\_ARPといった定義は、
+ソースコード~\ref{src:ethernet.h}で示したように、/usr/include/net/ethernet.hで定義されている。
+35行目ではntohsという関数を利用するが、これは2バイト変数のバイトオーダを
+ホストバイトオーダ（ホストCPUに依存）からからネットワークバイトオーダ（ビッグエンディアン）に
+変換する標準Cライブラリ関数となる。
+
+\subsection{アドレス解決プロトコル (ARP)} \label{sec:arp}
+
+Ethernetでの通信はMACアドレスベースで行われる、
+より上位層のIPはMACアドレスではなくIPアドレスで通信を行う。
+したがって、IPパケットをEthernetフレームで転送するためには、
+どのMACアドレスがどのIPアドレスに対応しているかを知らなければならない。
+ARPは、IPアドレスからMACアドレスの対応を得るために使うプロトコルである。
 
 \subsection{ネットワーク層} \label{sec:network}
 
