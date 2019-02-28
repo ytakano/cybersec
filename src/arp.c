@@ -84,7 +84,7 @@ void arp_req(struct my_ifnet *ifp, struct in_addr *addr) {
     memcpy(req->arp_sha, ifp->ifaddr, ETHER_ADDR_LEN); // 送信元MACは自分
     memcpy(req->arp_spa, &ifp->addr, sizeof(req->arp_spa)); // 送信元IPは自分
     memset(req->arp_tha, 0xff, ETHER_ADDR_LEN); // 宛先MACはブロードキャスト
-    memcpy(req->arp_tpa, addr, sizeof(*addr)); // 質問先IP
+    memcpy(req->arp_tpa, addr, sizeof(*addr)); // 問い合わせIP
 
     ether_output(ifp, eh, ETHER_HDR_LEN + sizeof(struct ether_arp));
 }
@@ -201,11 +201,11 @@ void arp_input(struct my_ifnet *ifp, struct arphdr *arph) {
         arp_req_input(ifp, arph);
         return;
     case ARPOP_REPLY:
-        // REPLYを受け取って送信バッファ中のフレームを送信
+        // リプライを受け取って送信バッファ中のフレームを送信
         arp_reply_input(ifp, arph);
         return;
     default:
-        // ARP要求と応答以外は未対応
+        // ARPリクエストとリプライ以外は未対応
         return;
     }
 }

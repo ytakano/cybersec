@@ -47,7 +47,7 @@ OSI参照モデルでは、下から順に1層に物理層、2層にデータリ
 }
 データリンク、ネットワーク、トランスポート層のプロトコルにはそれぞれアドレスがあり、
 各層は、そのアドレスに基づいて転送を行う。
-データリンク層プロトコルの一つであるIEEE 802では、アドレスは42ビットで表され、文字で表現すると00-00-5E-00-53-02といった
+データリンク層プロトコルの一つであるIEEE 802では、アドレスは42ビットで表され、16進数で表現すると00-00-5E-00-53-02といった
 表記になる。
 図~\ref{fig:osi_link}中で宛先MACと示される値は、
 IEEE 802の宛先MACアドレスを示している。
@@ -338,13 +338,320 @@ L2ブリッジが有効かどうかは、IS\_L2BRIDGEというマクロで判定
 ホストバイトオーダ（ホストCPUに依存）からからネットワークバイトオーダ（ビッグエンディアン）に
 変換する標準Cライブラリ関数となる。
 
+\begin{itembox}[l]{\bf 重要ポイント}
+    \begin{itemize}
+        \item 入力インターフェースのMACアドレスと、Ethernetヘッダ中の宛先MACアドレスを比較して、自身宛てのEthernetフレームか判別する
+        \item ブロードキャストMACアドレス（FF-FF-FF-FF-FF-FF）の場合は自身宛てと判別する
+        \item Ethernetヘッダ中のプロトコルタイプフィールドを判別して、IPv4、IPv6、ARPなど上位層のプロトコル種別を判別する
+    \end{itemize}
+\end{itembox}
+
+\subsection{L2ブリッジ} \label{sec:l2bridge}
+
 \subsection{アドレス解決プロトコル (ARP)} \label{sec:arp}
+
+\begin{figure}[tb]
+    \centering
+    \includegraphics[width=14cm,pagebox=artbox]{figs/arp.pdf}
+    \caption{ARPの動作図}
+    \label{fig:arp}
+\end{figure}
 
 Ethernetでの通信はMACアドレスベースで行われる、
 より上位層のIPはMACアドレスではなくIPアドレスで通信を行う。
 したがって、IPパケットをEthernetフレームで転送するためには、
 どのMACアドレスがどのIPアドレスに対応しているかを知らなければならない。
-ARPは、IPアドレスからMACアドレスの対応を得るために使うプロトコルである。
+ARPは、IPv4アドレスからMACアドレスの対応を得るために使うプロトコルである。
+
+図~\ref{fig:arp}はARPの動作を示した図となる。
+この図では3つのホストA、B、Cがあり、AがBへと通信するためにARPでIPv4アドレスとMACアドレスの対応の
+解決を行っている。
+それぞれのホストはARPテーブルと呼ばれる、IPv4アドレスとMACアドレスの対応を保存しておくテーブルを持っており、
+初期状態ではARPテーブルは空である。
+
+ホストAがホストBに通信を行うために、ホストAは、まずARPリクエストと呼ばれるパケットを
+Ethernetブロードキャストでリンク内の全てのノードに送信する
+（ただしここで、ホストAはホストBのIPv4アドレスを知っているとする）。
+これは図~\ref{fig:arp}の上部に赤の破線で示されるパケットであり、
+このARPリクエストには、192.168.0.2というIPv4アドレスを持っているノードは誰かを問い合わせている。
+ARPリクエストを受け取ったホストB、Cは自身のARPテーブルにホストAのIPv4アドレスと
+MACアドレスを記憶しておく。
+すると、図~\ref{fig:arp}の下部に示されるように、ホストB、CのARPテーブルが更新される。
+
+ARPリクエストを受け取ったホストBは、リクエスト先のIPv4アドレスが自身のアドレスと一致するため、
+ARPリプライをホストAに送信する。
+ARPリプライを受け取ったホストAは、自身のARPテーブルにホストBの情報を追加して、
+その後、実際にIPv4アドレスでの通信を開始する。
+
+ARPヘッダ構造体とEthernetで用いるARP構造体は、ソースコード~\ref{src:if_arp.h}と\ref{src:if_ether.h}
+に示すように、/usr/include/net/if\_arp.hと/usr/include/netinet/if\_ether.hにて定義されている。
+
+\begin{lstlisting}[caption=ARP構造体 (/usr/include/net/if\_arp.h),label=src:if_arp.h]
+/*
+ * Address Resolution Protocol.
+ *
+ * See RFC 826 for protocol description.  ARP packets are variable
+ * in size; the arphdr structure defines the fixed-length portion.
+ * Protocol type values are the same as those for 10 Mb/s Ethernet.
+ * It is followed by the variable-sized fields ar_sha, arp_spa,
+ * arp_tha and arp_tpa in that order, according to the lengths
+ * specified.  Field names used correspond to RFC 826.
+ */
+struct  arphdr {
+        u_int16_t ar_hrd;       /* format of hardware address */
+#define ARPHRD_ETHER    1       /* ethernet hardware format */
+#define ARPHRD_IEEE802  6       /* IEEE 802 hardware format */
+#define ARPHRD_FRELAY   15      /* frame relay hardware format */
+#define ARPHRD_IEEE1394 24      /* IEEE 1394 (FireWire) hardware format */
+        u_int16_t ar_pro;       /* format of protocol address */
+        u_int8_t  ar_hln;       /* length of hardware address */
+        u_int8_t  ar_pln;       /* length of protocol address */
+        u_int16_t ar_op;        /* one of: */
+#define ARPOP_REQUEST   1       /* request to resolve address */
+#define ARPOP_REPLY     2       /* response to previous request */
+#define ARPOP_REVREQUEST 3      /* request protocol address given hardware */
+#define ARPOP_REVREPLY  4       /* response giving protocol address */
+#define ARPOP_INVREQUEST 8      /* request to identify peer */
+#define ARPOP_INVREPLY  9       /* response identifying peer */
+/*
+ * The remaining fields are variable in size,
+ * according to the sizes above.
+ */
+#ifdef COMMENT_ONLY
+        u_int8_t  ar_sha[];     /* sender hardware address */
+        u_int8_t  ar_spa[];     /* sender protocol address */
+        u_int8_t  ar_tha[];     /* target hardware address */
+        u_int8_t  ar_tpa[];     /* target protocol address */
+#endif
+};
+\end{lstlisting}
+
+\begin{lstlisting}[caption=Ethernet用ARP構造体 (/usr/include/netinet/if\_ether.h),label=src:if_ether.h]
+/*
+ * Ethernet Address Resolution Protocol.
+ *
+ * See RFC 826 for protocol description.  Structure below is adapted
+ * to resolving internet addresses.  Field names used correspond to
+ * RFC 826.
+ */
+struct  ether_arp {
+        struct  arphdr ea_hdr;  /* fixed-size header */
+        u_char  arp_sha[ETHER_ADDR_LEN];        /* sender hardware address */
+        u_char  arp_spa[4];     /* sender protocol address */
+        u_char  arp_tha[ETHER_ADDR_LEN];        /* target hardware address */
+        u_char  arp_tpa[4];     /* target protocol address */
+}
+\end{lstlisting}
+
+\begin{table}[tb]
+    \centering
+    \caption{arphdr構造体のメンバ変数（全てビッグエンディアン）} \label{tab:arphdr}
+    \begin{tabular}{rl}
+        ar\_hrd & L2プロトコル識別子。Ethernetの場合は1 \\
+        ar\_pro & L3プロトコル識別子。IPv4の場合はETHERTYPE\_IP \\
+        ar\_hln & L2アドレスのバイト数。MACアドレスの場合は6バイト \\
+        ar\_pln & L3アドレスのバイト数。IPv4アドレスの場合は4バイト \\
+        ar\_op & ARPの種類。リクエストの場合は1で、リプライの場合は2 \\
+    \end{tabular}
+\end{table}
+
+表~\ref{tab:arphdr}はarphdr構造体のメンバ変数を説明した表となる。
+基本的に、ar\_op変数以外の値はEthernetとIPv4を扱うときは表で示した値で固定となる。
+ただし、構造体定義からもわかるように、ARPはEthernetやIPv4に限らず様々なプロトコルで利用可能な設計となっている。
+ether\_arp構造体のメンバ変数は、MACアドレスとIPv4アドレスを保存する変数であることは自明のため詳細は割愛する。
+
+次に、実際におもちゃのネットワークスタックでARP処理を行う関数を見ていく。
+ソースコード~\ref{src:arp_input}は、ARPパケットを受け取り、
+リクエストやリプライなどそれぞれに対応した関数を呼び出すarp\_input関数である。
+
+\begin{lstlisting}[caption=arp\_input関数,label=src:arp_input]
+/*
+ * ARPリクエスト及び応答を受け取る関数
+ * 引数:
+ *   ifp: 入力インターフェース
+ *   arph: 入力ARP
+ */
+void arp_input(struct my_ifnet *ifp, struct arphdr *arph) {
+    // Ethernet以外は未対応
+    if (ntohs(arph->ar_hrd) != ARPHRD_ETHER || arph->ar_hln != ETHER_ADDR_LEN)
+        return;
+
+    // IP以外は未対応
+    if (ntohs(arph->ar_pro) != ETHERTYPE_IP ||
+        arph->ar_pln != sizeof(struct in_addr))
+        return;
+
+    switch (ntohs(arph->ar_op)) {
+    case ARPOP_REQUEST:
+        // ARPリクエストを受け取り応答
+        arp_req_input(ifp, arph);
+        return;
+    case ARPOP_REPLY:
+        // リプライを受け取って送信バッファ中のフレームを送信
+        arp_reply_input(ifp, arph);
+        return;
+    default:
+        // ARPリクエストとリプライ以外は未対応
+        return;
+    }
+}
+\end{lstlisting}
+
+arp\_input関数は引数に入力インターフェースをさすmy\_ifnet構造体へのポインタ変数であるifpと、
+入力ARPパケットをさすarphdr構造体へのポインタ変数であるarphをとる。
+9、10行目でL2プロトコルとL2プロトコルアドレスの長さをチェックし、Ethernetかつ6バイト意外であるなら、
+未対応として処理を終了する。
+13〜15行目ではL3プロトコルがIPv4であるかをチェックし、そうでないなら処理を終了する。
+17行目でARPプロトコルの種類を判別し、ARPリクエストであれば20行目でarp\_req\_input関数を呼び出し、
+ARPリプライであればarp\_reply\_input関数を呼び出す。
+ただし、おもちゃのネットワークスタックではARPリクエストとリプライ以外は未対応であるため、
+これら以外のARPパケットが来た場合は何もせずに処理を終了する。
+
+ソースコード~\ref{src:arp_req}はARPリクエストを送信するためのarp\_req関数である。
+図~\ref{fig:arp}上部のホストAは、このarp\_req関数を用いてARPリクエストを送信する。
+
+\begin{lstlisting}[caption=arp\_req関数,label=src:arp_req]
+/*
+ * ARPリクエストを送信
+ * 引数:
+ *   ifp: 送信を行うインターフェース
+ *   addr: 問い合わせを行うIPアドレスへのポインタ
+ */
+void arp_req(struct my_ifnet *ifp, struct in_addr *addr) {
+    uint8_t buf[ETHER_HDR_LEN + sizeof(struct ether_arp)];
+    struct ether_header *eh = (struct ether_header *)buf;
+    struct ether_arp *req = (struct ether_arp *)(buf + ETHER_HDR_LEN);
+
+    // Ethenerヘッダ設定
+    memcpy(eh->ether_shost, ifp->ifaddr, ETHER_ADDR_LEN); // 送信元MACは自分
+    memset(eh->ether_dhost, 0xff, ETHER_ADDR_LEN); // 宛先MACはブロードキャスト
+    eh->ether_type = htons(ETHERTYPE_ARP);
+
+    // ARPヘッダ設定
+    req->ea_hdr.ar_hrd = ntohs(ARPHRD_ETHER); // ハードウェアタイプ (Ethernet)
+    req->ea_hdr.ar_pro = ntohs(ETHERTYPE_IP); // プロトコルタイプ (IP)
+    req->ea_hdr.ar_hln = ETHER_ADDR_LEN; // 6バイト。MACアドレスサイズ
+    req->ea_hdr.ar_pln = sizeof(struct in_addr); // 4バイト。IPv4アドレスサイズ
+    req->ea_hdr.ar_op = ntohs(ARPOP_REQUEST); // ARPリクエスト
+
+    // ARPリクエスト設定
+    memcpy(req->arp_sha, ifp->ifaddr, ETHER_ADDR_LEN); // 送信元MACは自分
+    memcpy(req->arp_spa, &ifp->addr, sizeof(req->arp_spa)); // 送信元IPは自分
+    memset(req->arp_tha, 0xff, ETHER_ADDR_LEN); // 宛先MACはブロードキャスト
+    memcpy(req->arp_tpa, addr, sizeof(*addr)); // 問い合わせIP
+
+    ether_output(ifp, eh, ETHER_HDR_LEN + sizeof(struct ether_arp));
+}
+\end{lstlisting}
+
+arp\_req関数は出力先インターフェースをさすmy\_ifnet構造体へのポインタ変数であるifpと、
+問い合わせIPv4アドレスをさすin\_addr構造体へのポインタ変数であるaddrを引数にとる。
+8行目のでは送信ARPパケット用のバッファを作成しており、
+9、10行目で、EthernetヘッダとARPのためのデータを格納する先のアドレスを計算している。
+13、14行目ではEthernetヘッダ情報を設定しており、送信元アドレスは出力先インターフェースの
+MACアドレスとしている。
+その一方、宛先アドレスは、ネットワーク全体に届くようブロードキャストアドレス（FF-FF-FF-FF-FF-FF）を設定している。
+また、プロトコルタイプは今回はARPであるため、ETHERTYPE\_ARPを設定している。
+18〜22行目ではARPヘッダの設定をしており、これは前述したとおりである。
+25〜28行目ではARPリクエストパケットにIPv4アドレスとMACアドレスを設定している。
+送信元のMACとIPv4アドレスは出力先インターフェースのアドレスであり、
+ターゲットのIPv4アドレスは問い合わせIPv4アドレスである。
+ただし、問い合わせMACアドレスは不明なので、ここではブロードキャストに設定している。
+ARPパケットに値を設定した後、最後の30行目でethernet\_output関数を呼び出し、ARPパケットを送信する。
+
+\begin{lstlisting}[caption=arp\_req\_input関数,label=src:arp_req_input]
+/*
+ * ARPリクエストを受け取り、ARPリプライを返す関数
+ * 引数:
+ *   ifp: 受信したインターフェース
+ *   arph: ARPリクエストへのポインタ
+ */
+static void arp_req_input(struct my_ifnet *ifp, struct arphdr *arph) {
+    struct ether_arp *req = (struct ether_arp *)arph;
+    uint8_t buf[ETHER_HDR_LEN + sizeof(struct ether_arp)];
+    struct ether_header *eh = (struct ether_header *)buf;
+    struct ether_arp *reply = (struct ether_arp *)(buf + ETHER_HDR_LEN);
+
+    char addr[16];
+    inet_ntop(PF_INET, req->arp_tpa, addr, sizeof(addr));
+    printf("ARP: who has %s?\n", addr);
+
+    // ARPテーブルに追加
+    add2arptable((struct in_addr *)req->arp_spa, req->arp_sha);
+
+    struct in_addr *tpa = (struct in_addr *)req->arp_tpa;
+    if (tpa->s_addr != ifp->addr.s_addr)
+        return;
+
+    // Ethenerヘッダ設定
+    memcpy(eh->ether_shost, ifp->ifaddr, ETHER_ADDR_LEN); // 送信元MACは自分
+    memcpy(eh->ether_dhost, req->arp_sha, ETHER_ADDR_LEN); // 宛先MAC
+    eh->ether_type = htons(ETHERTYPE_ARP);
+
+    // ARPヘッダ設定
+    reply->ea_hdr.ar_hrd = ntohs(ARPHRD_ETHER); // ハードウェアタイプ (Ethernet)
+    reply->ea_hdr.ar_pro = ntohs(ETHERTYPE_IP); // プロトコルタイプ (IP)
+    reply->ea_hdr.ar_hln = ETHER_ADDR_LEN; // 6バイト。MACアドレスサイズ
+    reply->ea_hdr.ar_pln =
+        sizeof(struct in_addr); // 4バイト。IPv4アドレスサイズ
+    reply->ea_hdr.ar_op = ntohs(ARPOP_REPLY); // ARPリプライ
+
+    // ARPリプライ設定
+    memcpy(reply->arp_sha, ifp->ifaddr, ETHER_ADDR_LEN); // 送信元MACは自分
+    memcpy(reply->arp_spa, &ifp->addr,
+           sizeof(reply->arp_spa)); // 送信元IPは自分
+    memcpy(reply->arp_tha, req->arp_sha, ETHER_ADDR_LEN);         // 宛先MAC
+    memcpy(reply->arp_tpa, req->arp_spa, sizeof(reply->arp_tpa)); // 質問先IP
+
+    ether_output(ifp, eh, ETHER_HDR_LEN + sizeof(struct ether_arp));
+}
+\end{lstlisting}
+
+\begin{lstlisting}[caption=arp\_reply\_input関数,label=src:arp_reply_input]
+/*
+ * ARPリプライを受け取り、送信バッファ中のフレームを送信する関数
+ * 引数:
+ *   ifp: 入力インターフェース
+ *   arph:
+ */
+static void arp_reply_input(struct my_ifnet *ifp, struct arphdr *arph) {
+    struct ether_arp *rep = (struct ether_arp *)arph;
+
+    char addr[16];
+    inet_ntop(PF_INET, rep->arp_spa, addr, sizeof(addr));
+    printf("ARP: %02X-%02X-%02X-%02X-%02X-%02X has %s\n", rep->arp_sha[0],
+           rep->arp_sha[1], rep->arp_sha[2], rep->arp_sha[3], rep->arp_sha[4],
+           rep->arp_sha[5], addr);
+
+    // ARPテーブルに追加
+    add2arptable((struct in_addr *)rep->arp_spa, rep->arp_sha);
+
+    // 送信バッファ中のフレームを送信
+    struct sendbuf *np;
+    for (np = sbuf.lh_first; np != NULL;) {
+        if (np->eh->ether_type == htons(ETHERTYPE_IP)) {
+            struct ip2mac *mac = find_mac(&np->nextip);
+            if (mac == NULL) {
+                np = np->pointers.le_next;
+                continue;
+            }
+
+            // 宛先MACアドレスを設定
+            memcpy(np->eh->ether_dhost, mac->macaddr, ETHER_ADDR_LEN);
+
+            // インターフェースへ出力
+            ether_output(ifp, np->eh, np->ethlen);
+
+            // バッファを解放
+            free(np->eh);
+            struct sendbuf *tmp = np->pointers.le_next;
+            LIST_REMOVE(np, pointers);
+            free(np);
+            np = tmp;
+        }
+    }
+}
+\end{lstlisting}
 
 \subsection{ネットワーク層} \label{sec:network}
 
