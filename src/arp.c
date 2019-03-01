@@ -108,6 +108,7 @@ static void arp_req_input(struct my_ifnet *ifp, struct arphdr *arph) {
     // ARPテーブルに追加
     add2arptable((struct in_addr *)req->arp_spa, req->arp_sha);
 
+    // 問い合わせIPv4アドレスが自身のIPv4アドレスかチェック
     struct in_addr *tpa = (struct in_addr *)req->arp_tpa;
     if (tpa->s_addr != ifp->addr.s_addr)
         return;
@@ -157,6 +158,7 @@ static void arp_reply_input(struct my_ifnet *ifp, struct arphdr *arph) {
     struct sendbuf *np;
     for (np = sbuf.lh_first; np != NULL;) {
         if (np->eh->ether_type == htons(ETHERTYPE_IP)) {
+            // ARPテーブルに宛先IPv4アドレスがあるか検索
             struct ip2mac *mac = find_mac(&np->nextip);
             if (mac == NULL) {
                 np = np->pointers.le_next;
