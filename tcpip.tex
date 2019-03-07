@@ -348,6 +348,119 @@ L2ブリッジが有効かどうかは、IS\_L2BRIDGEというマクロで判定
 
 \subsection{L2ブリッジ} \label{sec:l2bridge}
 
+\begin{figure}[tb]
+    \centering
+    \includegraphics[width=14cm,pagebox=artbox]{figs/bridge.pdf}
+    \caption{L2ブリッジの動作図}
+    \label{fig:bridge}
+\end{figure}
+
+図~\ref{fig:bridge}はL2ブリッジの動作を示した図となる。
+L2ブリッジにはポートと呼ばれる物理的~\footnote{仮想的な場合もある}なポートと呼ばれる接続口があり、
+それぞれのポートと各ホストが接続されている。
+また、一般的にL2ブリッジはMACアドレステーブルと呼ばれるテーブルを保持しており、
+このMACアドレステーブルはMACアドレスとポート番号を保持している。
+
+図~\ref{fig:bridge}では、4つのノードA〜Dが、1つのL2ブリッジに接続されており、
+初期状態ではL2ブリッジのMACアドレステーブルは空の状態である。
+図の上部ではホストAからホストCのMACアドレス00-00-5E-00-53-03へ向けて
+Ethernetフレームが送信され、このEthernetフレームはL2ブリッジにより
+全てのホストへ向けて転送されている。
+これは、L2ブリッジがEthernetフレームを転送する際には、転送すべきポートを
+MACアドレステーブルから参照して決定するが、
+MACアドレステーブルにMACアドレスが存在しない場合は、全てのポートへ転送するためである。
+
+L2ブリッジは、一度Ethernetフレームを転送するとEthernetフレームの送信元MACアドレスとポート番号を記憶する。
+これを示したのが図~\ref{fig:bridge}の下部のMACアドレステーブルとなる。
+本図の下部では、Ethernetフレームを受け取ったホストCが、
+ホストAのMACアドレスである00-00-5E-00-53-01に対して何かしら応答している。
+しかし、ここではL2ブリッジは全てのホストへ向けてEthernetフレームを転送するのではなく、
+ホストAのみに対して転送されている。
+これは、MACアドレステーブルにすでにホストAのMACアドレスとポート番号が保存されているためである。
+
+
+\begin{lstlisting}[caption=MACアドレステーブルの実装,label=src:mactable]
+// MACアドレスのハッシュ値を計算するマクロ
+#define MACHASH(ADDR)                                                          \
+    ((ADDR)[0] ^ (ADDR)[1] ^ (ADDR)[2] ^ (ADDR)[3] ^ (ADDR)[4] ^ (ADDR)[5])
+
+// MACアドレステーブル定義
+struct mac2if {
+    uint8_t addr[ETHER_ADDR_LEN];
+    struct my_ifnet *ifp;
+};
+
+struct mac2if mactable[256]; // MACアドレステーブルのインスタンス
+
+/*
+ * MACアドレステーブルにMACアドレスを追加する関数
+ * 引数:
+ *   ifp: 入力インターフェース
+ *   eh: 入力フレーム
+ */
+static void add2mactable(struct my_ifnet *ifp, struct ether_header *eh) {
+    // 送信元MACアドレスがブロードキャストアドレスならテーブルに追加しない
+    if (IS_BROADCAST(eh->ether_shost))
+        return;
+
+    // 送信元MACアドレスからハッシュ値を計算
+    uint8_t hash = MACHASH(eh->ether_shost);
+
+    // テーブルに追加
+    mactable[hash].ifp = ifp;
+    memcpy(mactable[hash].addr, eh->ether_shost, ETHER_ADDR_LEN);
+}
+
+/*
+ * MACアドレステーブルから対応するインターフェースを取得する関数
+ * 返り値:
+ *   対応するmy_ifnet構造体へのポインタ。
+ *   ただし、テーブルにMACアドレスが存在しない場合はNULLが返る。
+ * 引数:
+ *   eh: 入力フレーム
+ */
+static struct my_ifnet *find_interface(struct ether_header *eh) {
+    // 宛先MACアドレスからハッシュ値を計算
+    uint8_t hash = MACHASH(eh->ether_dhost);
+
+    // 送信元MACアドレスとMACアドレステーブルのMACアドレスとを比較
+    if (memcmp(mactable[hash].addr, eh->ether_dhost, ETHER_ADDR_LEN) != 0)
+        return NULL;
+
+    return mactable[hash].ifp;
+}
+\end{lstlisting}
+
+\begin{lstlisting}[caption=bridge\_input関数,label=src:bridge_input]
+/*
+ * ブリッジ処理を行う関数
+ * 引数:
+ *   ifp: 入力インターフェース
+ *   eh: 入力フレーム
+ *   len: 入力フレーム長
+ */
+static void bridge_input(struct my_ifnet *ifp, struct ether_header *eh,
+                         int len) {
+    // MACアドレステーブルを検索
+    struct my_ifnet *outif = find_interface(eh);
+
+    if (outif) {
+        // MACアドレステーブルにキャッシュされていた場合、そのインターフェースへ送信
+        ether_output(outif, eh, len);
+    } else {
+        // MACアドレステーブルにない場合、受信インターフェース以外の全てのインターフェースへ送信
+        for (struct my_ifnet *np = LIST_FIRST(&ifs); np != NULL;
+             np = LIST_NEXT(np, pointers)) {
+            if (ifp != np)
+                ether_output(np, eh, len);
+        }
+    }
+
+    // MACアドレステーブルへキャッシュ
+    add2mactable(ifp, eh);
+}
+\end{lstlisting}
+
 \subsection{アドレス解決プロトコル (ARP)} \label{sec:arp}
 
 \begin{figure}[tb]
