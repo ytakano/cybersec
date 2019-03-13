@@ -378,7 +378,8 @@ L2ブリッジは、一度Ethernetフレームを転送するとEthernetフレ�
 ホストAのみに対して転送されている。
 これは、MACアドレステーブルにすでにホストAのMACアドレスとポート番号が保存されているためである。
 
-
+ソースコード~\ref{src:mactable}は、おもちゃのネットワークでのMACアドレステーブルの実装を
+示している。
 \begin{lstlisting}[caption=MACアドレステーブルの実装,label=src:mactable]
 // MACアドレスのハッシュ値を計算するマクロ
 #define MACHASH(ADDR)                                                          \
@@ -430,7 +431,19 @@ static struct my_ifnet *find_interface(struct ether_header *eh) {
     return mactable[hash].ifp;
 }
 \end{lstlisting}
+MACアドレステーブルは256個の配列から構成され、配列のインデックスはMACアドレスの値を排他的論理和で計算する。
+ソースコード~\ref{src:mactable}の2行目は、MACアドレスのハッシュ値を計算する関数で、
+5〜11行目はMACアドレステーブルの定義となる。
+mac2if構造体をみてわかるように、MACアドレステーブルを利用するとMACアドレスからインターフェースを得ることが出来る。
+19〜30行目で、MACアドレステーブルへ新規MACアドレスを追加するadd2mactable関数が定義されている。
+また、40〜49行目では、MACアドレステーブルから、MACアドレスをキーとしてインターフェースを取得する
+find\_interface関数を定義している。
+これらは、11行目で定義した配列に値を格納、取得する単純な関数であるので動作は各自で確認してほしい。
 
+ソースコード~\ref{src:bridge_input}は実際にブリッジ処理を行うbridge\_input関数となる。
+この関数では、引数に入力インターフェースをさすmy\_ifnet構造体へのポインタ変数であるifpと、
+入力Ethernetフレームをさすether\_header構造体へのポインタ変数であるehと、
+フレーム長をさすlenをとる。
 \begin{lstlisting}[caption=bridge\_input関数,label=src:bridge_input]
 /*
  * ブリッジ処理を行う関数
@@ -460,6 +473,26 @@ static void bridge_input(struct my_ifnet *ifp, struct ether_header *eh,
     add2mactable(ifp, eh);
 }
 \end{lstlisting}
+この関数では、まず、11行目で、MACアドレステーブルを検索し出力先インターフェースを取得する。
+その後、出力先インターフェースが取得できれば、15行目でそのインターフェースへ出力し、
+見つからなければ18〜21行目で全てのインターフェースへ出力する。
+そして最後に、26行目で、受信したEthernetフレームの送信元MACアドレスをMACアドレステーブルへ追加する。
+
+本設では、内部にMACアドレステーブルを持つL2ブリッジについて説明したが、
+MACアドレステーブルを持たず、全てのインターフェースへと転送するものもある。
+一般的に、このようなL2ブリッジはリーピータハブとも呼ばれたり、バカハブ（馬鹿ハブ）とも呼んだりする。
+スイッチングハブ、スマートスイッチ、インテリジェントスイッチなどと呼ぶときは全て、
+MACアドレステーブルを内部的に持つが、バカハブ、リピータハブと呼ぶときには内部的にMACアドレステーブルは
+持っていない。
+
+\begin{itembox}[l]{\bf 重要ポイント}
+    \begin{itemize}
+        \item L2ブリッジ、スイッチングハブは、内部的にMACアドレステーブルを持ち、MACアドレスとインターフェースを結びつける
+        \item Ethernetフレームの転送は、MACアドレステーブルの情報を用いて行われる　
+        \item 転送すべきEthernetフレームの宛先MACアドレスがMACアドレステーブルにない場合は、全てのインターフェースへと転送する
+        \item Ethernetフレームが入力されたタイミングでMACアドレステーブルが更新される
+    \end{itemize}
+\end{itembox}
 
 \subsection{アドレス解決プロトコル (ARP)} \label{sec:arp}
 
@@ -795,7 +828,7 @@ ARPリプライへのポインタarphである。
     \begin{itemize}
         \item ARPを利用してIPv4アドレスとMACアドレスの解決が行われる
         \item OS内部にはIPv4アドレスとMACアドレスの対応を記録したARPテーブルが存在する
-        \item ARPテーブルはARPパケットは受信したタイミングでARPテーブルを更新される
+        \item ARPテーブルはARPパケットを受信したタイミングで更新される
     \end{itemize}
 \end{itembox}
 
@@ -828,6 +861,8 @@ struct ip {
         struct    in_addr ip_src, ip_dst; /* source and dest address */
 };
 \end{lstlisting}
+
+\subsection{IPv6} \label{sec:ipv6}
 
 \begin{lstlisting}[caption=IPv6アドレス構造体 (/usr/include/netinet6/in6.h),label=src:in6.h]
 /*
