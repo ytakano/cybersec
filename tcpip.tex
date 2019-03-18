@@ -832,7 +832,25 @@ ARPリプライへのポインタarphである。
     \end{itemize}
 \end{itembox}
 
-\subsection{ネットワーク層} \label{sec:network}
+\subsection{ネットワーク層（IPv4）} \label{sec:network}
+
+本節ではネットワーク層のプロトコルとしてIPv4を中心に議論を行う。
+IPv4以外のネットワーク層のプロトコルとしては、IPv6があるが、
+IPv6については~\ref{sec:ipv6}節で簡単に説明する。
+ネットワーク層のプロトコルはIPv4とIPv6以外にも、IPXなどのプロトコルがあったが現在ではほとんど使われていない。
+
+IPv4の役目を一言で言うならば、世界中のコンピュータを一意に識別して
+相互接続性を実現することである。
+IPv4の識別子としては32ビットのIPv4アドレスが用いられ、
+相互接続性はルーティングと呼ばれるパケット転送のメカニズムを用いて実現される。
+したがって、全てのIPv4ノードは、IPv4アドレスとIPv4のルーティングテーブルを持つことになる。
+
+\begin{figure}[tb]
+    \centering
+    \includegraphics[width=15cm,pagebox=artbox]{figs/routing.pdf}
+    \caption{IPv4のルーティング}
+    \label{fig:routing}
+\end{figure}
 
 \begin{lstlisting}[caption=IPv4ヘッダ定義 (/usr/include/netinet/ip.h),label=src:ip.h]
 /*
