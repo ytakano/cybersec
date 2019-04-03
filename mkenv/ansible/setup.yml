@@ -1,0 +1,50 @@
+- name: Vagrant + libvirtのインストール
+  hosts: cybersec
+  vars:
+    user: userid
+  remote_user: "{{user}}"
+  tasks:
+    - name: apt update
+      become: yes
+      apt:
+        update_cache: yes
+    - name: apt upgrade
+      become: yes
+      apt:
+        upgrade: dist
+    - name: install KVM
+      become: yes
+      apt:
+        name: "{{packages}}"
+      vars:
+        packages:
+          - qemu-kvm
+          - libvirt0
+          - virt-manager
+          - libguestfs-tools
+          - qemu
+          - ebtables
+          - dnsmasq-base
+          - libxslt-dev
+          - libxml2-dev
+          - libvirt-dev
+          - zlib1g-dev
+          - ruby-dev
+          - ruby-libvirt
+    - name: download Vagrant
+      get_url:
+        url: https://releases.hashicorp.com/vagrant/2.2.4/vagrant_2.2.4_x86_64.deb
+        dest: /tmp
+    - name: install Vagrant
+      become: yes
+      apt:
+        deb: /tmp/vagrant_2.2.4_x86_64.deb
+    - name: install vagrant-libvirt
+      command: vagrant plugin install vagrant-libvirt
+    - name: "adding {{user}} to libvirt group"
+      become: yes
+      user:
+        name: "{{user}}"
+        group: "{{user}}"
+        groups: libvirt
+        append: yes
