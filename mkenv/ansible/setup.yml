@@ -48,3 +48,5 @@
         group: "{{user}}"
         groups: libvirt
         append: yes
+    - name: fetch the box of OpenBSD
+      command: vagrant box add generic/openbsd6 --provider libvirt
