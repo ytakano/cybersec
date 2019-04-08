@@ -101,6 +101,8 @@ void ipv4_input(struct ip *iph) {
         tcp_input((struct tcphdr *)nxt);
         break;
     case IPPROTO_UDP:
+        udp_input((struct udphdr *)nxt);
+        break;
     default:;
     }
 }
