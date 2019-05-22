@@ -194,13 +194,14 @@ static void ipv4_forward(struct ip *iph) {
     if (entry == NULL) // 宛先がルーティングテーブルに存在しない
         return;
 
-    uint32_t len = ntohs(iph->ip_len);     // IPパケット長
-    uint32_t ethlen = ETHER_HDR_LEN + len; // Ethernetフレーム長
-
+    // 自分宛てのパケットかを検査
     if (entry->ifp != NULL && entry->ifp->addr.s_addr == iph->ip_dst.s_addr) {
         ipv4_input(iph);
         return;
     }
+
+    uint32_t len = ntohs(iph->ip_len);     // IPパケット長
+    uint32_t ethlen = ETHER_HDR_LEN + len; // Ethernetフレーム長
 
     iph->ip_ttl--; // TTLを1減算
 
