@@ -1,0 +1,43 @@
+Vagrant.configure("2") do |config|
+  config.vm.box = "generic/openbsd6"
+
+  config.vm.define :h1 do | h1 |
+    h1.vm.hostname = "h1"
+    h1.vm.network "private_network", ip: "172.16.0.20", netmask: "255.255.255.0", libvirt__domain_name: "q05_a0"
+  end
+
+  config.vm.define :h2 do | h2 |
+    h2.vm.hostname = "h2"
+    h2.vm.network "private_network", libvirt__domain_name: "q05_a0"
+    h2.vm.network "private_network", libvirt__domain_name: "q05_b0"
+    h2.vm.network "private_network", libvirt__domain_name: "q05_c"
+  end
+
+  config.vm.define :h3 do | h3 |
+    h3.vm.hostname = "h3"
+    h3.vm.network "private_network", libvirt__domain_name: "q05_c"
+    h3.vm.network "private_network", libvirt__domain_name: "q05_d"
+  end
+
+  config.vm.define :h4 do | h4 |
+    h4.vm.hostname = "h4"
+    h4.vm.network "private_network", libvirt__domain_name: "q05_a1"
+    h4.vm.network "private_network", libvirt__domain_name: "q05_b1"
+    h4.vm.network "private_network", libvirt__domain_name: "q05_d"
+  end
+
+  config.vm.define :h5 do | h5 |
+    h5.vm.hostname = "h5"
+    h5.vm.network "private_network", ip: "172.16.0.30", netmask: "255.255.255.0", libvirt__domain_name: "q05_a1"
+  end
+
+  config.vm.define :h6 do | h6 |
+    h6.vm.hostname = "h6"
+    h6.vm.network "private_network", ip: "172.16.50.4", netmask: "255.255.255.0", libvirt__domain_name: "q05_b0"
+  end
+
+  config.vm.define :h7 do | h7 |
+    h7.vm.hostname = "h7"
+    h7.vm.network "private_network", ip: "172.16.50.5", netmask: "255.255.255.0", libvirt__domain_name: "q05_b1"
+  end
+end
