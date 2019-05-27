@@ -214,7 +214,7 @@ static void ipv4_forward(struct ip *iph) {
 
     // Ethernetヘッダおよび、IPヘッダへアドレスを設定
     memcpy(eh->ether_shost, entry->ifp->ifaddr,
-           ETHER_ADDR_LEN);                // 宛先MACアドレス
+           ETHER_ADDR_LEN);                // 送信元MACアドレス
     memcpy(buf + ETHER_HDR_LEN, iph, len); // IPヘッダ
     eh->ether_type = htons(ETHERTYPE_IP);  // EthernetタイプをIPに設定
 

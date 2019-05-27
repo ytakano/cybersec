@@ -1,11 +1,7 @@
 
 本節では、仮想マシンを用いてネットワークとファイアウォールの
 設定を行う問題を提示する。
-演習環境はVagrant+libvirtをもちいて構築することが出来る。
-Vagrant+libvirtは、Ubuntu 18.04だとmkenv/ansibleディレクトリ以下にある
-Ansible用のファイルを用いるとインストールすることが出来る。
-ただし、講義では演習用の環境を用意するため、自分でVagrant+libvirtをインストールする必要はない。
-
+演習環境はVagrant+VirtualBoxをもちいて構築することが出来る。
 演習用のOSはOpenBSDとしている。
 OpenBSDはセキュリティが強く意識されたOSであり、
 OpenBSDのpfの設定は大変明瞭でわかりやすく、初学者に向いているためである。
@@ -41,18 +37,18 @@ Vagrant.configure("2") do |config|
 
   config.vm.define :h1 do | h1 |
     h1.vm.hostname = "h1"
-    h1.vm.network "private_network", ip: "172.16.0.10", libvirt__domain_name: "q01_a"
+    h1.vm.network "private_network", ip: "172.16.0.10", vagrant__intnet: "q01_a"
   end
 
   config.vm.define :h2 do | h2 |
     h2.vm.hostname = "h2"
-    h2.vm.network "private_network", ip: "172.16.0.20", libvirt__domain_name: "q01_a"
-    h2.vm.network "private_network", ip: "172.20.0.20", libvirt__domain_name: "q01_b"
+    h2.vm.network "private_network", ip: "172.16.0.20", vagrant__intnet: "q01_a"
+    h2.vm.network "private_network", ip: "172.20.0.20", vagrant__intnet: "q01_b"
   end
 
   config.vm.define :h3 do | h3 |
     h3.vm.hostname = "h3"
-    h3.vm.network "private_network", ip: "172.20.0.30", libvirt__domain_name: "q01_b"
+    h3.vm.network "private_network", ip: "172.20.0.30", vagrant__intnet: "q01_b"
   end
 end
 \end{lstlisting}
