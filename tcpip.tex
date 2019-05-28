@@ -1026,7 +1026,7 @@ ip\_offとIP\_DF（0x4000）の論理積が0でない場合はフラグメント
 ip\_offとIP\_DF（0x2000）の論理積が0でない場合はフラグメントパケットが続くことを意味する。
 ip\_offの下位13ビットは、そのパケットはフラグメントする前のパケットから何バイト目かを示す値となる。
 
-21行目のip\_ttlメンバ変数（ttlはttlはTime to Liveの略）は
+21行目のip\_ttlメンバ変数（ttlはTime to Liveの略）は
 IPパケットの生存時間を示すために用いられる。
 先に説明したように、IPは複数のルータを経由して転送されるが、
 このとき経路にループがあった場合に永遠にパケットが転送され続けてしまう。
@@ -1145,7 +1145,7 @@ static void ipv4_forward(struct ip *iph) {
 
     // Ethernetヘッダおよび、IPヘッダへアドレスを設定
     memcpy(eh->ether_shost, entry->ifp->ifaddr,
-           ETHER_ADDR_LEN);                // 宛先MACアドレス
+           ETHER_ADDR_LEN);                // 送信元MACアドレス
     memcpy(buf + ETHER_HDR_LEN, iph, len); // IPヘッダ
     eh->ether_type = htons(ETHERTYPE_IP);  // EthernetタイプをIPに設定
 
