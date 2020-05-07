@@ -4,16 +4,25 @@ Vagrant.configure("2") do |config|
   config.vm.define :h1 do | h1 |
     h1.vm.hostname = "h1"
     h1.vm.network "private_network", ip: "172.16.0.20", netmask: "255.255.255.0", virtualbox__intnet: "q04_a"
+    h1.vm.provider :virtualbox do |vb|
+      vb.customize ["modifyvm", :id, "--nicpromisc2", "allow-all"]
+    end
   end
 
   config.vm.define :h2 do | h2 |
     h2.vm.hostname = "h2"
     h2.vm.network "private_network", virtualbox__intnet: "q04_a"
     h2.vm.network "private_network", virtualbox__intnet: "q04_b"
+    h2.vm.provider :virtualbox do |vb|
+      vb.customize ["modifyvm", :id, "--nicpromisc2", "allow-all", "--nicpromisc3", "allow-all"]
+    end
   end
 
   config.vm.define :h3 do | h3 |
     h3.vm.hostname = "h3"
-    h3.vm.network "private_network", ip: "172.20.0.30", netmask: "255.255.255.0", virtualbox__intnet: "q04_b"
+    h3.vm.network "private_network", ip: "172.16.0.30", netmask: "255.255.255.0", virtualbox__intnet: "q04_b"
+    h3.vm.provider :virtualbox do |vb|
+      vb.customize ["modifyvm", :id, "--nicpromisc2", "allow-all"]
+    end
   end
 end
